@@ -1,19 +1,19 @@
-name: CI
+name: CI (.NET 9)
 
 on:
   push:
     paths:
       - ".github/workflows/**"
-      - "Core/**"
-      - "Core.Tests/**"
+      - "src/**"
+      - "tests/**"
   pull_request:
     paths:
       - ".github/workflows/**"
-      - "Core/**"
-      - "Core.Tests/**"
+      - "src/**"
+      - "tests/**"
 
 jobs:
-  test-core:
+  test-unit:
     runs-on: ubuntu-latest
     env:
       DOTNET_NOLOGO: true
@@ -23,7 +23,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET
+      - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
@@ -37,22 +37,35 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      - name: Restore
-        run: |
-          dotnet restore src/Wicrypt.Integration.Messages.RabbitMQ.Core/Wicrypt.Integration.Messages.RabbitMQ.Core.csproj
-          dotnet restore tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests.csproj
+      - name: Restore solution
+        run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
 
-      - name: Build
-        run: |
-          dotnet build src/Wicrypt.Integration.Messages.RabbitMQ.Core/Wicrypt.Integration.Messages.RabbitMQ.Core.csproj --configuration Release --no-restore
-          dotnet build tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests.csproj --configuration Release --no-restore
+      - name: Build solution
+        run: dotnet build "Chidelu.Integration.Messaging.RabbitMQ.sln" --configuration Release --no-restore
 
-      - name: Test (Core.Tests)
-        run: dotnet test tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests.csproj \
+      - name: Run Unit Tests with Coverage
+        shell: bash
+        run: |
+          # Discover all unit test projects dynamically (case-insensitive)
+          mapfile -t TEST_PROJECTS < <(find tests -type f -iname "*Tests.Unit.csproj")
+          
+          if [ ${#TEST_PROJECTS[@]} -eq 0 ]; then
+            echo "❌ No unit test projects found matching pattern '*Tests.Unit.csproj'."
+            exit 1
+          fi
+
+          echo "🧪 Found ${#TEST_PROJECTS[@]} test project(s):"
+          printf '%s\n' "${TEST_PROJECTS[@]}"
+
+          # Run all discovered test projects sequentially
+          for proj in "${TEST_PROJECTS[@]}"; do
+            echo "▶️ Running tests for: $proj"
+            dotnet test "$proj" \
               --configuration Release \
               --no-build \
-              --logger "trx;LogFileName=test-results.trx" \
+              --logger "trx;LogFileName=$(basename "$proj" .csproj)-results.trx" \
               --collect "XPlat Code Coverage"
+          done
 
       - name: Install ReportGenerator
         run: dotnet tool install -g dotnet-reportgenerator-globaltool
@@ -62,37 +75,36 @@ jobs:
         run: |
           COVERAGE_FILES=$(find . -type f -name "coverage.cobertura.xml")
           if [ -z "$COVERAGE_FILES" ]; then
-            echo "No coverage file found."
+            echo "⚠️ No coverage files found."
             exit 1
           fi
-
-          # Create a combined HTML summary (handles single/multiple test result folders)
+          
+          echo "📊 Generating combined HTML coverage report..."
           ~/.dotnet/tools/reportgenerator \
             -reports:$COVERAGE_FILES \
             -targetdir:CoverageReport \
             -reporttypes:HtmlSummary;Cobertura
 
-          # Copy Cobertura to a predictable path too
           mkdir -p CoverageRaw
           for f in $COVERAGE_FILES; do
             cp "$f" "CoverageRaw/$(basename "$(dirname "$f")")-coverage.cobertura.xml"
           done
 
-      - name: Upload test results
+      - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: core-test-results
-          path: "**/test-results.trx"
+          name: unit-test-results
+          path: "**/*.trx"
 
-      - name: Upload coverage (HTML)
+      - name: Upload Coverage (HTML)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: CoverageReport
 
-      - name: Upload coverage (Cobertura XML)
+      - name: Upload Coverage (Cobertura XML)
         if: always()
         uses: actions/upload-artifact@v4
         with:
