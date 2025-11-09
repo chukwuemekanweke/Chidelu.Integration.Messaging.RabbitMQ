@@ -81,6 +81,9 @@ jobs:
           name: build-artifacts
           path: .
 
+      - name: Restore solution
+        run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
+
       - name: Run Unit Tests with Coverage (auto-discover *Tests.Unit.csproj)
         shell: bash
         run: |
