@@ -84,6 +84,10 @@ jobs:
       - name: Run Unit Tests with Coverage (auto-discover *Tests.Unit.csproj)
         shell: bash
         run: |
+          RESULTS_ROOT="TestResultsAll"
+          rm -rf "$RESULTS_ROOT"
+          mkdir -p "$RESULTS_ROOT"
+
           mapfile -t TEST_PROJECTS < <(find tests -type f -iname "*Tests.Unit.csproj")
           if [ ${#TEST_PROJECTS[@]} -eq 0 ]; then
             echo "❌ No unit test projects found matching '*Tests.Unit.csproj'."
@@ -94,11 +98,15 @@ jobs:
           printf '%s\n' "${TEST_PROJECTS[@]}"
 
           for proj in "${TEST_PROJECTS[@]}"; do
-            echo "▶️ dotnet test $proj"
+            NAME=$(basename "$proj" .csproj)
+            OUTDIR="$RESULTS_ROOT/$NAME"
+            mkdir -p "$OUTDIR"
+            echo "▶️ dotnet test $proj → $OUTDIR"
             dotnet test "$proj" \
               --configuration Release \
               --no-build \
-              --logger "trx;LogFileName=$(basename "$proj" .csproj)-results.trx" \
+              --results-directory "$OUTDIR" \
+              --logger "trx;LogFileName=$NAME-results.trx" \
               --collect "XPlat Code Coverage"
           done
 
@@ -108,9 +116,10 @@ jobs:
       - name: Generate Coverage Report
         shell: bash
         run: |
-          COVERAGE_FILES=$(find . -type f -name "coverage.cobertura.xml")
+          COVERAGE_FILES=$(find TestResultsAll -type f -name "coverage.cobertura.xml")
           if [ -z "$COVERAGE_FILES" ]; then
-            echo "⚠️ No coverage files found."
+            echo "⚠️ No coverage files found under TestResultsAll."
+            find TestResultsAll -maxdepth 3 -type f -print
             exit 1
           fi
 
@@ -125,7 +134,7 @@ jobs:
           for f in $COVERAGE_FILES; do
             cp "$f" "CoverageRaw/coverage-$((++i)).cobertura.xml"
           done
-          
+
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
