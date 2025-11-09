@@ -117,6 +117,7 @@ jobs:
         run: dotnet tool install -g dotnet-reportgenerator-globaltool
 
       - name: Generate Coverage Report
+        if: false
         shell: bash
         run: |
           COVERAGE_FILES=$(find TestResultsAll -type f -name "coverage.cobertura.xml")
@@ -137,6 +138,29 @@ jobs:
           for f in $COVERAGE_FILES; do
             cp "$f" "CoverageRaw/coverage-$((++i)).cobertura.xml"
           done
+
+      - name: Generate Coverage Report (fixed)
+        shell: bash
+        run: |
+          COVERAGE_FILES=$(find TestResultsAll -type f -name "coverage.cobertura.xml")
+          if [ -z "$COVERAGE_FILES" ]; then
+            echo "No coverage files found under TestResultsAll."
+            find TestResultsAll -maxdepth 3 -type f -print || true
+            exit 1
+          fi
+
+          echo "Generating combined HTML + Cobertura coverage report..."
+          REPORTS=$(echo "$COVERAGE_FILES" | tr '\n' ';' | sed 's/;*$//')
+          ~/.dotnet/tools/reportgenerator \
+            -reports:"$REPORTS" \
+            -targetdir:"CoverageReport" \
+            -reporttypes:"HtmlSummary;Cobertura"
+
+          mkdir -p CoverageRaw
+          i=0
+          while IFS= read -r f; do
+            [ -n "$f" ] && cp "$f" "CoverageRaw/coverage-$((++i)).cobertura.xml"
+          done <<< "$COVERAGE_FILES"
 
       - name: Upload Test Results
         if: always()
