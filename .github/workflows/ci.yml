@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    paths:
+      - ".github/workflows/**"
+      - "Core/**"
+      - "Core.Tests/**"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "Core/**"
+      - "Core.Tests/**"
+
+jobs:
+  test-core:
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: |
+          dotnet restore src/Wicrypt.Integration.Messages.RabbitMQ.Core/Wicrypt.Integration.Messages.RabbitMQ.Core.csproj
+          dotnet restore tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests.csproj
+
+      - name: Build
+        run: |
+          dotnet build src/Wicrypt.Integration.Messages.RabbitMQ.Core/Wicrypt.Integration.Messages.RabbitMQ.Core.csproj --configuration Release --no-restore
+          dotnet build tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests.csproj --configuration Release --no-restore
+
+      - name: Test (Core.Tests)
+        run: dotnet test tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests/Wicrypt.Integration.Messages.RabbitMQ.Core.Tests.csproj \
+              --configuration Release \
+              --no-build \
+              --logger "trx;LogFileName=test-results.trx" \
+              --collect "XPlat Code Coverage"
+
+      - name: Install ReportGenerator
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate Coverage Report
+        shell: bash
+        run: |
+          COVERAGE_FILES=$(find . -type f -name "coverage.cobertura.xml")
+          if [ -z "$COVERAGE_FILES" ]; then
+            echo "No coverage file found."
+            exit 1
+          fi
+
+          # Create a combined HTML summary (handles single/multiple test result folders)
+          ~/.dotnet/tools/reportgenerator \
+            -reports:$COVERAGE_FILES \
+            -targetdir:CoverageReport \
+            -reporttypes:HtmlSummary;Cobertura
+
+          # Copy Cobertura to a predictable path too
+          mkdir -p CoverageRaw
+          for f in $COVERAGE_FILES; do
+            cp "$f" "CoverageRaw/$(basename "$(dirname "$f")")-coverage.cobertura.xml"
+          done
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-test-results
+          path: "**/test-results.trx"
+
+      - name: Upload coverage (HTML)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: CoverageReport
+
+      - name: Upload coverage (Cobertura XML)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-cobertura
+          path: CoverageRaw
