@@ -1,0 +1,1 @@
+# Chidelu.Integration.Messaging.RabbitMQ
