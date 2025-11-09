@@ -13,7 +13,7 @@ on:
       - "tests/**"
 
 jobs:
-  test-unit:
+  build:
     runs-on: ubuntu-latest
     env:
       DOTNET_NOLOGO: true
@@ -26,8 +26,7 @@ jobs:
       - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            9.0.x
+          dotnet-version: 9.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -40,26 +39,62 @@ jobs:
       - name: Restore solution
         run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
 
-      - name: Build solution
+      - name: Build solution (Release)
         run: dotnet build "Chidelu.Integration.Messaging.RabbitMQ.sln" --configuration Release --no-restore
 
-      - name: Run Unit Tests with Coverage
+      - name: Upload build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          if-no-files-found: warn
+          path: |
+            src/**/bin/Release/**
+            tests/**/bin/Release/**
+
+  test-unit:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: .
+
+      - name: Run Unit Tests with Coverage (auto-discover *Tests.Unit.csproj)
         shell: bash
         run: |
-          # Discover all unit test projects dynamically (case-insensitive)
           mapfile -t TEST_PROJECTS < <(find tests -type f -iname "*Tests.Unit.csproj")
-          
           if [ ${#TEST_PROJECTS[@]} -eq 0 ]; then
-            echo "❌ No unit test projects found matching pattern '*Tests.Unit.csproj'."
+            echo "❌ No unit test projects found matching '*Tests.Unit.csproj'."
             exit 1
           fi
 
-          echo "🧪 Found ${#TEST_PROJECTS[@]} test project(s):"
+          echo "🧪 Found ${#TEST_PROJECTS[@]} project(s):"
           printf '%s\n' "${TEST_PROJECTS[@]}"
 
-          # Run all discovered test projects sequentially
           for proj in "${TEST_PROJECTS[@]}"; do
-            echo "▶️ Running tests for: $proj"
+            echo "▶️ dotnet test $proj"
             dotnet test "$proj" \
               --configuration Release \
               --no-build \
@@ -78,18 +113,19 @@ jobs:
             echo "⚠️ No coverage files found."
             exit 1
           fi
-          
-          echo "📊 Generating combined HTML coverage report..."
+
+          echo "📊 Generating combined HTML + Cobertura coverage report..."
           ~/.dotnet/tools/reportgenerator \
-            -reports:$COVERAGE_FILES \
-            -targetdir:CoverageReport \
-            -reporttypes:HtmlSummary;Cobertura
+            -reports:"$COVERAGE_FILES" \
+            -targetdir:"CoverageReport" \
+            "-reporttypes:HtmlSummary,Cobertura"
 
           mkdir -p CoverageRaw
+          i=0
           for f in $COVERAGE_FILES; do
-            cp "$f" "CoverageRaw/$(basename "$(dirname "$f")")-coverage.cobertura.xml"
+            cp "$f" "CoverageRaw/coverage-$((++i)).cobertura.xml"
           done
-
+          
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
