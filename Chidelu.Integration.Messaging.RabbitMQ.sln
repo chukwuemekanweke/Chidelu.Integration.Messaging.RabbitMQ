@@ -1,0 +1,46 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36408.4
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{7AC2D55A-046A-4A5E-B191-CC9D586BCFFE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chidelu.Integration.Messaging.RabbitMQ.Core", "src\Chidelu.Integration.Messaging.RabbitMQ.Core\Chidelu.Integration.Messaging.RabbitMQ.Core.csproj", "{950E59F5-6252-5C5B-DFC0-92898BCC27D3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chidelu.Integration.Messaging.RabbitMQ.Publisher", "src\Chidelu.Integration.Messaging.RabbitMQ.Publisher\Chidelu.Integration.Messaging.RabbitMQ.Publisher.csproj", "{CD07428A-64CE-4EBF-B563-E01575656F4D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Chidelu.Integration.Messaging.RabbitMQ.Consumer", "src\Chidelu.Integration.Messaging.RabbitMQ.Consumer\Chidelu.Integration.Messaging.RabbitMQ.Consumer.csproj", "{856C7B1C-D739-4E2D-B3FB-11DE258253E4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{950E59F5-6252-5C5B-DFC0-92898BCC27D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{950E59F5-6252-5C5B-DFC0-92898BCC27D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{950E59F5-6252-5C5B-DFC0-92898BCC27D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{950E59F5-6252-5C5B-DFC0-92898BCC27D3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CD07428A-64CE-4EBF-B563-E01575656F4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CD07428A-64CE-4EBF-B563-E01575656F4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CD07428A-64CE-4EBF-B563-E01575656F4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CD07428A-64CE-4EBF-B563-E01575656F4D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{856C7B1C-D739-4E2D-B3FB-11DE258253E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{856C7B1C-D739-4E2D-B3FB-11DE258253E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{856C7B1C-D739-4E2D-B3FB-11DE258253E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{856C7B1C-D739-4E2D-B3FB-11DE258253E4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{950E59F5-6252-5C5B-DFC0-92898BCC27D3} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{CD07428A-64CE-4EBF-B563-E01575656F4D} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{856C7B1C-D739-4E2D-B3FB-11DE258253E4} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {525AF73A-E4AF-43DF-89F3-CB0520EEE446}
+	EndGlobalSection
+EndGlobal
