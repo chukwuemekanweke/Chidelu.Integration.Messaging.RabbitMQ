@@ -85,6 +85,7 @@ jobs:
         run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
 
       - name: Run Unit Tests with Coverage (auto-discover *Tests.Unit.csproj)
+        id: unit_tests
         shell: bash
         run: |
           RESULTS_ROOT="TestResultsAll"
@@ -114,9 +115,12 @@ jobs:
           done
 
       - name: Install ReportGenerator
+        if: ${{ steps.unit_tests.outcome == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) }}
         run: dotnet tool install -g dotnet-reportgenerator-globaltool
 
       - name: Generate Coverage Report
+        id: coverage
+        if: ${{ steps.unit_tests.outcome == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) }}
         shell: bash
         run: |
           COVERAGE_FILES=$(find TestResultsAll -type f -name "coverage.cobertura.xml")
@@ -147,14 +151,14 @@ jobs:
           path: "**/*.trx"
 
       - name: Upload Coverage (HTML)
-        if: always()
+        if: ${{ steps.coverage.outcome == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) }}
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: CoverageReport
 
       - name: Upload Coverage (Cobertura XML)
-        if: always()
+        if: ${{ steps.coverage.outcome == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) }}
         uses: actions/upload-artifact@v4
         with:
           name: coverage-cobertura
