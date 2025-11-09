@@ -1,0 +1,165 @@
+name: CI (.NET 9)
+
+on:
+  push:
+    paths:
+      - ".github/workflows/**"
+      - "src/**"
+      - "tests/**"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "src/**"
+      - "tests/**"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore solution
+        run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
+
+      - name: Build solution (Release)
+        run: dotnet build "Chidelu.Integration.Messaging.RabbitMQ.sln" --configuration Release --no-restore
+
+      - name: Upload build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          if-no-files-found: warn
+          path: |
+            src/**/bin/Release/**
+            tests/**/bin/Release/**
+
+  test-unit:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+          path: .
+
+      - name: Restore solution
+        run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
+
+      - name: Run Unit Tests with Coverage (auto-discover *Tests.Unit.csproj)
+        id: unit_tests
+        shell: bash
+        run: |
+          RESULTS_ROOT="TestResultsAll"
+          rm -rf "$RESULTS_ROOT"
+          mkdir -p "$RESULTS_ROOT"
+
+          mapfile -t TEST_PROJECTS < <(find tests -type f -iname "*Tests.Unit.csproj")
+          if [ ${#TEST_PROJECTS[@]} -eq 0 ]; then
+            echo "❌ No unit test projects found matching '*Tests.Unit.csproj'."
+            exit 1
+          fi
+
+          echo "🧪 Found ${#TEST_PROJECTS[@]} project(s):"
+          printf '%s\n' "${TEST_PROJECTS[@]}"
+
+          for proj in "${TEST_PROJECTS[@]}"; do
+            NAME=$(basename "$proj" .csproj)
+            OUTDIR="$RESULTS_ROOT/$NAME"
+            mkdir -p "$OUTDIR"
+            echo "▶️ dotnet test $proj → $OUTDIR"
+            dotnet test "$proj" \
+              --configuration Release \
+              --no-build \
+              --results-directory "$OUTDIR" \
+              --logger "trx;LogFileName=$NAME-results.trx" \
+              --collect "XPlat Code Coverage"
+          done
+
+      - name: Install ReportGenerator
+        if: ${{ steps.unit_tests.outcome == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) }}
+        run: dotnet tool install -g dotnet-reportgenerator-globaltool
+
+      - name: Generate Coverage Report
+        id: coverage
+        if: ${{ steps.unit_tests.outcome == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) }}
+        shell: bash
+        run: |
+          COVERAGE_FILES=$(find TestResultsAll -type f -name "coverage.cobertura.xml")
+          if [ -z "$COVERAGE_FILES" ]; then
+            echo "No coverage files found under TestResultsAll."
+            find TestResultsAll -maxdepth 3 -type f -print || true
+            exit 1
+          fi
+
+          echo "Generating combined HTML + Cobertura coverage report..."
+          REPORTS=$(echo "$COVERAGE_FILES" | tr '\n' ';' | sed 's/;*$//')
+          ~/.dotnet/tools/reportgenerator \
+            -reports:"$REPORTS" \
+            -targetdir:"CoverageReport" \
+            -reporttypes:"HtmlSummary;Cobertura"
+
+          mkdir -p CoverageRaw
+          i=0
+          while IFS= read -r f; do
+            [ -n "$f" ] && cp "$f" "CoverageRaw/coverage-$((++i)).cobertura.xml"
+          done <<< "$COVERAGE_FILES"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: "**/*.trx"
+
+      - name: Upload Coverage (HTML)
+        if: ${{ steps.coverage.outcome == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: CoverageReport
+
+      - name: Upload Coverage (Cobertura XML)
+        if: ${{ steps.coverage.outcome == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-cobertura
+          path: CoverageRaw

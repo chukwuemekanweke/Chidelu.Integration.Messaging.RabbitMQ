@@ -17,6 +17,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "unit", "unit", "{F01949F2-0
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Wicrypt.Integration.Messages.RabbitMQ.Core.Tests.Unit", "tests\unit\Wicrypt.Integration.Messages.RabbitMQ.Core.Tests.Unit\Wicrypt.Integration.Messages.RabbitMQ.Core.Tests.Unit.csproj", "{35BC1417-417C-4EBD-9884-089ED08B0350}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "pipelines", "pipelines", "{E5BE0A76-1DC9-460A-ACE2-6AE586D16DD0}"
+	ProjectSection(SolutionItems) = preProject
+		.github\workflows\ci.yml = .github\workflows\ci.yml
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
