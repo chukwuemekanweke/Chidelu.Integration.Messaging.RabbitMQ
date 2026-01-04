@@ -65,7 +65,7 @@ public sealed class SenderTests
         await sut.SendAsync(payload, CancellationToken.None, extraHeaders);
 
         capturedExchange.ShouldBe("x.commands");
-        capturedRoutingKey.ShouldBe(typeof(ShipOrder).AssemblyQualifiedName);
+        capturedRoutingKey.ShouldBe(typeof(ShipOrder).FullName);
 
         capturedProps.ShouldNotBeNull();
         var headers = capturedProps!.Headers.ShouldNotBeNull();

@@ -17,5 +17,7 @@ public sealed class SubscriberConfig
 
     public ushort ConcurrentMessageCount { get; init; } = 1;
 
-    public string Key => $"{HostName}:{Port}:{VirtualHost}:{ServiceName}:{SubscriptionName}";
+    public string? DependencyInjectionKey { get; init; }
+
+    public string Key => DependencyInjectionKey ?? $"{HostName}:{Port}:{VirtualHost}:{ServiceName}:{SubscriptionName}";
 }

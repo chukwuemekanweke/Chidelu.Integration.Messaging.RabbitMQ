@@ -292,8 +292,7 @@ internal sealed class Consumer(
     private IReadOnlyList<string> ResolveMessageTypeRoutingKeys(string exchangeName)
     {
         var keys = GetRegisteredMessageTypes()
-            .Select(t => t.AssemblyQualifiedName
-                ?? t.FullName
+            .Select(t => t.FullName
                 ?? t.Name)
             .Where(k => !string.IsNullOrWhiteSpace(k))
             .Distinct(StringComparer.Ordinal)

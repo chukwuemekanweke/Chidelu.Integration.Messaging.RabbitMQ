@@ -11,7 +11,7 @@ public static class ServiceCollectionExtensions
         PublisherConfig config,
         string? dependencyInjectionKey = null)
     {
-        var key = dependencyInjectionKey ?? config.Key;
+        var key = dependencyInjectionKey ?? config.DependencyInjectionKey ?? config.Key;
         services.TryAddSingleton<IRabbitSerializer, DefaultRabbitSerializer>();
 
         services.AddKeyedSingleton<PublisherOptions>(key, (sp, _) =>
@@ -34,7 +34,7 @@ public static class ServiceCollectionExtensions
         SenderConfig config,
         string? dependencyInjectionKey = null)
     {
-        var key = dependencyInjectionKey ?? config.Key;
+        var key = dependencyInjectionKey ?? config.DependencyInjectionKey ?? config.Key;
         services.TryAddSingleton<IRabbitSerializer, DefaultRabbitSerializer>();
 
         services.AddKeyedSingleton<SenderOptions>(key, (sp, _) =>
