@@ -247,3 +247,58 @@ jobs:
         with:
           name: coverage-cobertura
           path: CoverageReport/Cobertura.xml
+
+  publish-nuget:
+    needs: [test-unit, test-integration]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Resolve package version from tag
+        id: version
+        shell: bash
+        run: |
+          TAG=$(git tag --points-at HEAD | head -n 1)
+          if [ -z "$TAG" ]; then
+            echo "No tag found on HEAD. Skipping NuGet publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          VERSION="${TAG#v}"
+          if [ -z "$VERSION" ]; then
+            echo "Resolved empty version from tag: $TAG"
+            exit 1
+          fi
+
+          echo "Using version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Restore solution
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
+
+      - name: Pack NuGet packages
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        run: |
+          dotnet pack "src/Chidelu.Integration.Messaging.RabbitMQ.Core/Chidelu.Integration.Messaging.RabbitMQ.Core.csproj" --configuration Release --no-restore --output artifacts/nuget -p:Version=${{ steps.version.outputs.version }}
+          dotnet pack "src/Chidelu.Integration.Messaging.RabbitMQ.Publisher/Chidelu.Integration.Messaging.RabbitMQ.Publisher.csproj" --configuration Release --no-restore --output artifacts/nuget -p:Version=${{ steps.version.outputs.version }}
+          dotnet pack "src/Chidelu.Integration.Messaging.RabbitMQ.Consumer/Chidelu.Integration.Messaging.RabbitMQ.Consumer.csproj" --configuration Release --no-restore --output artifacts/nuget -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Publish to NuGet
+        if: ${{ steps.version.outputs.publish == 'true' }}
+        run: dotnet nuget push "artifacts/nuget/*.nupkg" --api-key "${{ secrets.NUGET_API_KEY }}" --source "https://api.nuget.org/v3/index.json" --skip-duplicate
