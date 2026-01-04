@@ -1,0 +1,6 @@
+@Chidelu.Integration.Messaging.RabbitMQ.Samples.Api_HostAddress = http://localhost:5027
+
+GET {{Chidelu.Integration.Messaging.RabbitMQ.Samples.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
