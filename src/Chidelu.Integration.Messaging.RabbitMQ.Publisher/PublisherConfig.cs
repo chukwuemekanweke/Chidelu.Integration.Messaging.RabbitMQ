@@ -12,7 +12,5 @@ public sealed class PublisherConfig
 
     public required string EventsExchange { get; init; }
 
-    public string? DependencyInjectionKey { get; init; }
-
-    public string Key => DependencyInjectionKey ?? $"{HostName}:{Port}:{VirtualHost}:{ServiceName}";
+    public string Key => $"{HostName}:{Port}:{VirtualHost}:{ServiceName}";
 }

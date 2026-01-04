@@ -11,7 +11,5 @@ public sealed class SenderConfig
 
     public required string CommandsExchange { get; init; }
 
-    public string? DependencyInjectionKey { get; init; }
-
-    public string Key => DependencyInjectionKey ?? $"{HostName}:{Port}:{VirtualHost}:{ServiceName}";
+    public string Key => $"{HostName}:{Port}:{VirtualHost}:{ServiceName}";
 }

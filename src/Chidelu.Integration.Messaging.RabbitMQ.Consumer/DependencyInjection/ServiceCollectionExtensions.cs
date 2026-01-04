@@ -15,7 +15,7 @@ public static class ServiceCollectionExtensions
         string? dependencyInjectionKey = null)
     {
         var runtimeConfig = BuildRuntimeConfig(config, ExchangeType.Fanout);
-        var dependencyKeyName = dependencyInjectionKey ?? config.DependencyInjectionKey ?? config.Key;
+        var dependencyKeyName = dependencyInjectionKey ?? config.Key;
         return AddConsumerInternal(services, runtimeConfig, configure, dependencyKeyName);
     }
 
@@ -26,7 +26,7 @@ public static class ServiceCollectionExtensions
         string? dependencyInjectionKey = null)
     {
         var runtimeConfig = BuildRuntimeConfig(config, ExchangeType.Direct);
-        var dependencyKeyName = dependencyInjectionKey ?? config.DependencyInjectionKey ?? config.Key;
+        var dependencyKeyName = dependencyInjectionKey ?? config.Key;
         return AddConsumerInternal(services, runtimeConfig, configure, dependencyKeyName);
     }
 
