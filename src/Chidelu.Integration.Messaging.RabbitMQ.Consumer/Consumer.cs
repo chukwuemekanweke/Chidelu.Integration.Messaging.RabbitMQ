@@ -161,7 +161,7 @@ internal sealed class Consumer(
         }
     }
 
-    private async Task EnsureTopologyAsync(CancellationToken ct)
+    private async Task EnsureTopologyAsync(CancellationToken cancellationToken)
     {
         var cfg = options.Config;
         var deadLetterRoutingKey = cfg.DeadLetterQueue;
@@ -184,7 +184,7 @@ internal sealed class Consumer(
             exclusive: false,
             autoDelete: false,
             arguments: mainArgs,
-            cancellationToken: ct);
+            cancellationToken: cancellationToken);
 
         if (!string.IsNullOrWhiteSpace(cfg.ExchangeName))
         {
@@ -194,7 +194,7 @@ internal sealed class Consumer(
                 durable: true,
                 autoDelete: false,
                 arguments: null,
-                cancellationToken: ct);
+                cancellationToken: cancellationToken);
 
             var routingKeys = ResolveRoutingKeys(cfg.ExchangeType, cfg.ExchangeName);
             foreach (var rk in routingKeys)
@@ -204,7 +204,7 @@ internal sealed class Consumer(
                     exchange: cfg.ExchangeName,
                     routingKey: rk,
                     arguments: null,
-                    cancellationToken: ct);
+                    cancellationToken: cancellationToken);
             }
         }
 
@@ -218,7 +218,7 @@ internal sealed class Consumer(
                     durable: true,
                     autoDelete: false,
                     arguments: null,
-                    cancellationToken: ct);
+                    cancellationToken: cancellationToken);
             }
 
             var dlqArgs = new Dictionary<string, object?>
@@ -234,7 +234,7 @@ internal sealed class Consumer(
                 exclusive: false,
                 autoDelete: false,
                 arguments: dlqArgs,
-                cancellationToken: ct);
+                cancellationToken: cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(cfg.DeadLetterExchange))
             {
@@ -243,7 +243,7 @@ internal sealed class Consumer(
                     exchange: cfg.DeadLetterExchange,
                     routingKey: deadLetterRoutingKey,
                     arguments: null,
-                    cancellationToken: ct);
+                    cancellationToken: cancellationToken);
             }
         }
     }

@@ -16,4 +16,9 @@
     <ProjectReference Include="..\Chidelu.Integration.Messaging.RabbitMQ.Core\Chidelu.Integration.Messaging.RabbitMQ.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Chidelu.Integration.Messaging.RabbitMQ.Consumer.Tests.Unit" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
 </Project>
