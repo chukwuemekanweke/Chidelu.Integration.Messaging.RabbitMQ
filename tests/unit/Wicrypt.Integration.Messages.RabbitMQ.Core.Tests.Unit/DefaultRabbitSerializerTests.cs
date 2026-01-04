@@ -66,7 +66,8 @@ public sealed class DefaultRabbitSerializerTests
         model.When.ToString("O").ShouldBe(now);
 
         var reBytes = _sut.Serialize(model);
-        Encoding.UTF8.GetString(reBytes).ShouldContain(now);
+        var roundTrip = (WithWhen)_sut.Deserialize(reBytes, typeof(WithWhen))!;
+        roundTrip.When.ToString("O").ShouldBe(now);
     }
 
     private sealed record WithWhen(DateTimeOffset When);

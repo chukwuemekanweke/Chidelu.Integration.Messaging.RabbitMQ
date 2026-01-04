@@ -49,4 +49,15 @@ public sealed class HeadersTests
         Headers.TryGetGuid(h, "id", out var parsed).ShouldBeTrue();
         parsed.ShouldBe(id);
     }
+
+    [Fact]
+    public void IsReservedHeader_Should_Match_KnownMetadata()
+    {
+        Headers.IsReservedHeader(KnownMetadata.Type).ShouldBeTrue();
+        Headers.IsReservedHeader(KnownMetadata.MessageId).ShouldBeTrue();
+        Headers.IsReservedHeader(KnownMetadata.CorrelationId).ShouldBeTrue();
+        Headers.IsReservedHeader(KnownMetadata.CausationId).ShouldBeTrue();
+        Headers.IsReservedHeader(KnownMetadata.OriginatingOperationId).ShouldBeTrue();
+        Headers.IsReservedHeader("x-custom").ShouldBeFalse();
+    }
 }
