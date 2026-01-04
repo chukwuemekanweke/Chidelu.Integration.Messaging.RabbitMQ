@@ -1,13 +1,10 @@
 using Chidelu.Integration.Messaging.RabbitMQ.Core;
-using Chidelu.Integration.Messaging.RabbitMQ.Core.Exceptions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using Headers = Chidelu.Integration.Messaging.RabbitMQ.Core.Headers;
 
 namespace Chidelu.Integration.Messaging.RabbitMQ.Consumer;
 
@@ -20,6 +17,7 @@ internal sealed class Consumer(
     private readonly ILogger<Consumer> _logger = logger ?? NullLogger<Consumer>.Instance;
     private readonly ConcurrentDictionary<string, HandlerRegistry> _handlers = new(StringComparer.Ordinal);
     private int _handlersLoaded;
+    private MessageDispatcher? _dispatcher;
 
     private IConnection? _conn;
     private IChannel? _ch;
@@ -139,60 +137,28 @@ internal sealed class Consumer(
         }
 
         var cancellationToken = _stopCts?.Token ?? CancellationToken.None;
-        var headers = args.BasicProperties.Headers;
-
-        using var activity = BeginActivityScopeFromMetadata(headers);
-
-        try
+        var envelope = new MessageEnvelope
         {
-            var assemblyQualifiedType = Headers.GetRequiredString(headers, KnownMetadata.Type);
-            var messageType = ResolveMessageType(assemblyQualifiedType);
-            var handlerKey = messageType.FullName ?? messageType.Name;
+            Body = args.Body,
+            Headers = args.BasicProperties.Headers,
+            DeliveryTag = args.DeliveryTag
+        };
 
-            if (!_handlers.TryGetValue(handlerKey, out var registration))
-            {
-                throw new CannotProcessMessageNonTransientException($"No handler registered for '{handlerKey}'.");
-            }
+        var outcome = await GetDispatcher()
+            .DispatchAsync(envelope, cancellationToken);
 
-            var deserialized = options.Serializer.Deserialize(args.Body.Span, messageType)
-                ?? throw new DeserializationException(
-                    $"Deserialization returned null. MessageType: {messageType}");
-
-            await registration.Invoke(serviceProvider, deserialized, cancellationToken).ConfigureAwait(false);
-
-            await _ch.BasicAckAsync(args.DeliveryTag, multiple: false, cancellationToken: cancellationToken);
-        }
-        catch (FailedToProcessMessageException ex)
+        switch (outcome)
         {
-            await HandleNonRetryableAsync(args, ex, "failed-to-process", cancellationToken);
+            case DispatchOutcome.Ack:
+                await _ch.BasicAckAsync(args.DeliveryTag, multiple: false, cancellationToken: cancellationToken);
+                break;
+            case DispatchOutcome.NackDrop:
+                await _ch.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false, cancellationToken: cancellationToken);
+                break;
+            case DispatchOutcome.NackRequeue:
+                await _ch.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: true, cancellationToken: cancellationToken);
+                break;
         }
-        catch (Exception ex) when (ex is CannotProcessMessageNonTransientException || ex is DeserializationException)
-        {
-            await HandleNonRetryableAsync(args, ex, "non-transient", cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            await HandleRetryableAsync(args, ex, cancellationToken);
-        }
-    }
-
-    private async Task HandleRetryableAsync(
-        BasicDeliverEventArgs args,
-        Exception ex,
-        CancellationToken ct)
-    {
-        _logger.LogError(ex, "Message processing failed; requeueing.");
-        await _ch!.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: true, cancellationToken: ct);
-    }
-
-    private async Task HandleNonRetryableAsync(
-        BasicDeliverEventArgs args,
-        Exception ex,
-        string reason,
-        CancellationToken ct)
-    {
-        _logger.LogError(ex, "Message rejected without requeue. Reason: {Reason}.", reason);
-        await _ch!.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: false, cancellationToken: ct);
     }
 
     private async Task EnsureTopologyAsync(CancellationToken ct)
@@ -202,14 +168,14 @@ internal sealed class Consumer(
 
         var mainArgs = new Dictionary<string, object?>
         {
-            ["x-queue-type"] = "quorum",
-            ["x-delivery-limit"] = cfg.MaxRetryCount
+            [QueueArgumentKeys.QueueType] = QueueArgumentKeys.QueueTypeQuorum,
+            [QueueArgumentKeys.DeliveryLimit] = cfg.MaxRetryCount
         };
 
         if (!string.IsNullOrWhiteSpace(cfg.DeadLetterQueue))
         {
-            mainArgs["x-dead-letter-exchange"] = cfg.DeadLetterExchange;
-            mainArgs["x-dead-letter-routing-key"] = deadLetterRoutingKey;
+            mainArgs[QueueArgumentKeys.DeadLetterExchange] = cfg.DeadLetterExchange;
+            mainArgs[QueueArgumentKeys.DeadLetterRoutingKey] = deadLetterRoutingKey;
         }
 
         await _ch!.QueueDeclareAsync(
@@ -257,9 +223,9 @@ internal sealed class Consumer(
 
             var dlqArgs = new Dictionary<string, object?>
             {
-                ["x-queue-type"] = "quorum",
-                ["x-dead-letter-exchange"] = string.Empty,
-                ["x-dead-letter-routing-key"] = cfg.QueueName
+                [QueueArgumentKeys.QueueType] = QueueArgumentKeys.QueueTypeQuorum,
+                [QueueArgumentKeys.DeadLetterExchange] = string.Empty,
+                [QueueArgumentKeys.DeadLetterRoutingKey] = cfg.QueueName
             };
 
             await _ch.QueueDeclareAsync(
@@ -343,31 +309,6 @@ internal sealed class Consumer(
         }
     }
 
-    private static Type ResolveMessageType(string assemblyQualifiedType)
-    {
-        var resolved =
-            Type.GetType(assemblyQualifiedType, throwOnError: false)
-            ?? AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetType(assemblyQualifiedType, throwOnError: false))
-                .FirstOrDefault(t => t is not null);
-
-        return resolved ?? throw new DeserializationException(
-            $"Unable to resolve message type '{assemblyQualifiedType}'.");
-    }
-
-    private static IDisposable BeginActivityScopeFromMetadata(IDictionary<string, object?>? headers)
-    {
-        var parentId = Headers.GetString(headers, KnownMetadata.OriginatingOperationId);
-        if (!string.IsNullOrWhiteSpace(parentId))
-        {
-            var activity = new Activity("rabbitmq-consumer").SetParentId(parentId);
-            activity.Start();
-            return activity;
-        }
-
-        return new NoopScope();
-    }
-
     public async ValueTask DisposeAsync()
     {
         try
@@ -393,5 +334,15 @@ internal sealed class Consumer(
         }
     }
 
-    private sealed class NoopScope : IDisposable { public void Dispose() { } }
+    private MessageDispatcher GetDispatcher()
+    {
+        return _dispatcher ??= new MessageDispatcher(
+            serviceProvider,
+            options.Serializer,
+            _logger,
+            ResolveHandler);
+    }
+
+    private HandlerRegistry? ResolveHandler(string key)
+        => _handlers.TryGetValue(key, out var registration) ? registration : null;
 }

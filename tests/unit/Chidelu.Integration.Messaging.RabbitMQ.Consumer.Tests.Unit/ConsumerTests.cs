@@ -1,12 +1,9 @@
 using Chidelu.Integration.Messaging.RabbitMQ.Core;
 using Chidelu.Integration.Messaging.RabbitMQ.Core.Exceptions;
 using Microsoft.Extensions.DependencyInjection;
-using NSubstitute;
-using RabbitMQ.Client;
-using RabbitMQ.Client.Events;
+using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 using System.Collections.Concurrent;
-using System.Reflection;
 using CoreHeaders = Chidelu.Integration.Messaging.RabbitMQ.Core.Headers;
 
 namespace Chidelu.Integration.Messaging.RabbitMQ.Consumer.Tests.Unit;
@@ -37,7 +34,7 @@ public sealed class ConsumerTests
     }
 
     [Fact]
-    public async Task HandleMessageAsync_WhenHandlerSucceeds_Acks()
+    public async Task DispatchAsync_WhenHandlerSucceeds_ReturnsAck()
     {
         var seen = new ConcurrentBag<SampleMessage>();
         var services = new ServiceCollection()
@@ -46,169 +43,136 @@ public sealed class ConsumerTests
             .AddSingleton<IMessageHandler<SampleMessage>>(sp => sp.GetRequiredService<CapturingHandler>())
             .BuildServiceProvider();
 
-        var channel = Substitute.For<IChannel>();
-        channel.BasicAckAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(ValueTask.CompletedTask);
+        var serializer = new DefaultRabbitSerializer();
+        var handlers = new Dictionary<string, HandlerRegistry>(StringComparer.Ordinal)
+        {
+            [typeof(SampleMessage).FullName!] = CreateRegistry<SampleMessage, CapturingHandler>()
+        };
 
-        var consumer = CreateConsumer(services, channel);
-        consumer.AddHandler<SampleMessage, CapturingHandler>();
+        var dispatcher = CreateDispatcher(services, serializer, handlers);
+        var envelope = BuildEnvelope(new SampleMessage(7), serializer);
 
-        var args = BuildArgs(new SampleMessage(7));
+        var outcome = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
 
-        await InvokeHandleMessageAsync(consumer, args);
-
-        await channel.Received(1).BasicAckAsync(args.DeliveryTag, false, Arg.Any<CancellationToken>());
-        await channel.DidNotReceive().BasicNackAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        outcome.ShouldBe(DispatchOutcome.Ack);
         seen.ShouldContain(x => x.Value == 7);
     }
 
     [Fact]
-    public async Task HandleMessageAsync_WhenHandlerThrowsFailedToProcess_NacksWithoutRequeue()
+    public async Task DispatchAsync_WhenHandlerThrowsFailedToProcess_ReturnsNackDrop()
     {
         var services = new ServiceCollection()
             .AddSingleton<FailedHandler>()
             .AddSingleton<IMessageHandler<SampleMessage>>(sp => sp.GetRequiredService<FailedHandler>())
             .BuildServiceProvider();
 
-        var channel = Substitute.For<IChannel>();
-        channel.BasicNackAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(ValueTask.CompletedTask);
+        var serializer = new DefaultRabbitSerializer();
+        var handlers = new Dictionary<string, HandlerRegistry>(StringComparer.Ordinal)
+        {
+            [typeof(SampleMessage).FullName!] = CreateRegistry<SampleMessage, FailedHandler>()
+        };
 
-        var consumer = CreateConsumer(services, channel);
-        consumer.AddHandler<SampleMessage, FailedHandler>();
+        var dispatcher = CreateDispatcher(services, serializer, handlers);
+        var envelope = BuildEnvelope(new SampleMessage(1), serializer);
 
-        var args = BuildArgs(new SampleMessage(1));
+        var outcome = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
 
-        await InvokeHandleMessageAsync(consumer, args);
-
-        await channel.Received(1).BasicNackAsync(args.DeliveryTag, false, false, Arg.Any<CancellationToken>());
-        await channel.DidNotReceive().BasicAckAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        outcome.ShouldBe(DispatchOutcome.NackDrop);
     }
 
     [Fact]
-    public async Task HandleMessageAsync_WhenHandlerThrowsOtherException_NacksWithRequeue()
+    public async Task DispatchAsync_WhenHandlerThrowsOtherException_ReturnsNackRequeue()
     {
         var services = new ServiceCollection()
             .AddSingleton<ThrowingHandler>()
             .AddSingleton<IMessageHandler<SampleMessage>>(sp => sp.GetRequiredService<ThrowingHandler>())
             .BuildServiceProvider();
 
-        var channel = Substitute.For<IChannel>();
-        channel.BasicNackAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(ValueTask.CompletedTask);
-
-        var consumer = CreateConsumer(services, channel);
-        consumer.AddHandler<SampleMessage, ThrowingHandler>();
-
-        var args = BuildArgs(new SampleMessage(2));
-
-        await InvokeHandleMessageAsync(consumer, args);
-
-        await channel.Received(1).BasicNackAsync(args.DeliveryTag, false, true, Arg.Any<CancellationToken>());
-        await channel.DidNotReceive().BasicAckAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task HandleMessageAsync_WhenNoHandlerRegistered_NacksWithoutRequeue()
-    {
-        var services = new ServiceCollection().BuildServiceProvider();
-        var channel = Substitute.For<IChannel>();
-        channel.BasicNackAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(ValueTask.CompletedTask);
-
-        var consumer = CreateConsumer(services, channel);
-        var args = BuildArgs(new SampleMessage(3));
-
-        await InvokeHandleMessageAsync(consumer, args);
-
-        await channel.Received(1).BasicNackAsync(args.DeliveryTag, false, false, Arg.Any<CancellationToken>());
-        await channel.DidNotReceive().BasicAckAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-    }
-
-    [Fact]
-    public async Task HandleMessageAsync_WhenTypeHeaderMissing_NacksWithoutRequeue()
-    {
-        var services = new ServiceCollection().BuildServiceProvider();
-        var channel = Substitute.For<IChannel>();
-        channel.BasicNackAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
-            .Returns(ValueTask.CompletedTask);
-
-        var consumer = CreateConsumer(services, channel);
-        var args = BuildArgs(new SampleMessage(4), includeTypeHeader: false);
-
-        await InvokeHandleMessageAsync(consumer, args);
-
-        await channel.Received(1).BasicNackAsync(args.DeliveryTag, false, false, Arg.Any<CancellationToken>());
-        await channel.DidNotReceive().BasicAckAsync(Arg.Any<ulong>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
-    }
-
-    private static Consumer CreateConsumer(IServiceProvider services, IChannel channel)
-    {
-        var config = new ConsumerRuntimeConfig
-        {
-            ServiceName = "svc",
-            HostName = "localhost",
-            Port = 5672,
-            UserName = "user",
-            Password = "pass",
-            VirtualHost = "/",
-            QueueName = "cmd.orders",
-            DeadLetterQueue = "cmd.orders.dlq",
-            ExchangeName = "x.commands",
-            ExchangeType = ExchangeType.Direct,
-            PrefetchCount = 10,
-            MaxRetryCount = 10,
-            DeadLetterExchange = "x.dlx.cmd.orders",
-            ConcurrentMessageCount = 1
-        };
-
-        var options = new ConsumerOptions(config, new DefaultRabbitSerializer());
-        var map = new ConsumerHandlerMap();
-        var consumer = new Consumer(services, options, map);
-
-        SetField(consumer, "_ch", channel);
-        SetField(consumer, "_stopCts", new CancellationTokenSource());
-
-        return consumer;
-    }
-
-    private static BasicDeliverEventArgs BuildArgs(SampleMessage message, bool includeTypeHeader = true)
-    {
         var serializer = new DefaultRabbitSerializer();
-        var body = serializer.Serialize(message);
-
-        var props = new BasicProperties
+        var handlers = new Dictionary<string, HandlerRegistry>(StringComparer.Ordinal)
         {
-            Headers = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+            [typeof(SampleMessage).FullName!] = CreateRegistry<SampleMessage, ThrowingHandler>()
         };
+
+        var dispatcher = CreateDispatcher(services, serializer, handlers);
+        var envelope = BuildEnvelope(new SampleMessage(2), serializer);
+
+        var outcome = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
+
+        outcome.ShouldBe(DispatchOutcome.NackRequeue);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenNoHandlerRegistered_ReturnsNackDrop()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var serializer = new DefaultRabbitSerializer();
+        var handlers = new Dictionary<string, HandlerRegistry>(StringComparer.Ordinal);
+
+        var dispatcher = CreateDispatcher(services, serializer, handlers);
+        var envelope = BuildEnvelope(new SampleMessage(3), serializer);
+
+        var outcome = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
+
+        outcome.ShouldBe(DispatchOutcome.NackDrop);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_WhenTypeHeaderMissing_ReturnsNackDrop()
+    {
+        var services = new ServiceCollection().BuildServiceProvider();
+        var serializer = new DefaultRabbitSerializer();
+        var handlers = new Dictionary<string, HandlerRegistry>(StringComparer.Ordinal);
+
+        var dispatcher = CreateDispatcher(services, serializer, handlers);
+        var envelope = BuildEnvelope(new SampleMessage(4), serializer, includeTypeHeader: false);
+
+        var outcome = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
+
+        outcome.ShouldBe(DispatchOutcome.NackDrop);
+    }
+
+    private static MessageDispatcher CreateDispatcher(
+        IServiceProvider services,
+        IRabbitSerializer serializer,
+        IDictionary<string, HandlerRegistry> handlers)
+    {
+        return new MessageDispatcher(
+            services,
+            serializer,
+            NullLogger<Consumer>.Instance,
+            key => handlers.TryGetValue(key, out var registration) ? registration : null);
+    }
+
+    private static HandlerRegistry CreateRegistry<TMessage, THandler>()
+        where THandler : class, IMessageHandler<TMessage>
+    {
+        return new HandlerRegistry(
+            typeof(TMessage),
+            async (sp, obj, ct) =>
+            {
+                var handler = sp.GetRequiredService<THandler>();
+                await handler.HandleAsync((TMessage)obj, ct);
+            });
+    }
+
+    private static MessageEnvelope BuildEnvelope<T>(
+        T message,
+        DefaultRabbitSerializer serializer,
+        bool includeTypeHeader = true)
+    {
+        var headers = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
         if (includeTypeHeader)
         {
-            CoreHeaders.SetString(props.Headers, KnownMetadata.Type, typeof(SampleMessage).AssemblyQualifiedName!);
+            CoreHeaders.SetString(headers, KnownMetadata.Type, typeof(T).AssemblyQualifiedName!);
         }
 
-        return new BasicDeliverEventArgs(
-            "tag",
-            1,
-            false,
-            "x",
-            "rk",
-            props,
-            body,
-            CancellationToken.None);
-    }
-
-    private static Task InvokeHandleMessageAsync(Consumer consumer, BasicDeliverEventArgs args)
-    {
-        var method = typeof(Consumer).GetMethod("HandleMessageAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-        method.ShouldNotBeNull();
-        return (Task)method!.Invoke(consumer, new object?[] { consumer, args })!;
-    }
-
-    private static void SetField(Consumer consumer, string name, object value)
-    {
-        var field = typeof(Consumer).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
-        field.ShouldNotBeNull();
-        field!.SetValue(consumer, value);
+        return new MessageEnvelope
+        {
+            Body = serializer.Serialize(message!),
+            Headers = headers,
+            DeliveryTag = 1
+        };
     }
 }
