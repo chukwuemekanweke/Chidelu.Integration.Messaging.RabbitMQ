@@ -5,27 +5,45 @@ using Headers = Chidelu.Integration.Messaging.RabbitMQ.Core.Headers;
 
 namespace Chidelu.Integration.Messaging.RabbitMQ.Publisher;
 
-public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposable, IAsyncInitializable
+public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposable
 {
     private IConnection? _conn;
     private IChannel? _ch;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
-        var cf = new ConnectionFactory
+        if (_ch is not null)
         {
-            HostName = opt.Config.HostName,
-            Port = opt.Config.Port,
-            UserName = opt.Config.UserName,
-            Password = opt.Config.Password,
-            VirtualHost = opt.Config.VirtualHost,
-            ConsumerDispatchConcurrency = opt.Config.ConcurrentMessageCount
-        };
+            return;
+        }
 
-        _conn = await cf.CreateConnectionAsync($"{opt.Config.ServiceName}-publisher", cancellationToken);
-        _ch = await _conn.CreateChannelAsync(cancellationToken: cancellationToken);
+        await _initLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_ch is not null)
+            {
+                return;
+            }
 
-        await TopologyInstaller.EnsureAsync(_ch, opt.Config, cancellationToken);
+            var cf = new ConnectionFactory
+            {
+                HostName = opt.Config.HostName,
+                Port = opt.Config.Port,
+                UserName = opt.Config.UserName,
+                Password = opt.Config.Password,
+                VirtualHost = opt.Config.VirtualHost
+            };
+
+            _conn = await cf.CreateConnectionAsync($"{opt.Config.ServiceName}-publisher", cancellationToken);
+            _ch = await _conn.CreateChannelAsync(cancellationToken: cancellationToken);
+
+            await TopologyInstaller.EnsureAsync(_ch, opt.Config, cancellationToken);
+        }
+        finally
+        {
+            _initLock.Release();
+        }
     }
 
     public async Task PublishAsync<T>(
@@ -35,12 +53,9 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         where T : IEvent
     {
         cancellationToken.ThrowIfCancellationRequested();
+        await EnsureInitializedAsync(cancellationToken);
 
-        if (_ch is null)
-        {
-            throw new InvalidOperationException("Publisher not initialized. Call InitializeAsync() before publishing.");
-        }
-
+        var channel = _ch!;
         var routingKey = ResolveRoutingKey<T>();
         var body = opt.Serializer.Serialize(@event);
 
@@ -51,7 +66,7 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
             ArgumentException.ThrowIfNullOrWhiteSpace(opt.Config.EventsExchange, nameof(opt.Config.EventsExchange));
         }
 
-        await _ch.BasicPublishAsync(
+        await channel.BasicPublishAsync(
             exchange: opt.Config.EventsExchange!,
             routingKey: routingKey,
             mandatory: false,
@@ -67,17 +82,14 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         where T : IEvent
     {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (_ch is null)
-        {
-            throw new InvalidOperationException("Publisher not initialized. Call InitializeAsync() before publishing.");
-        }
+        await EnsureInitializedAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(opt.Config.EventsExchange))
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(opt.Config.EventsExchange, nameof(opt.Config.EventsExchange));
         }
 
+        var channel = _ch!;
         var routingKey = ResolveRoutingKey<T>();
         var exchange = opt.Config.EventsExchange!;
 
@@ -86,7 +98,7 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
             var body = opt.Serializer.Serialize(e);
             var properties = BuildProperties(e, sharedHeaders);
 
-            await _ch.BasicPublishAsync(
+            await channel.BasicPublishAsync(
                 exchange: exchange,
                 routingKey: routingKey,
                 mandatory: false,
