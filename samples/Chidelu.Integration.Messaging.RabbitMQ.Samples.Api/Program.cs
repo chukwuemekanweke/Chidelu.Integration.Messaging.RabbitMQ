@@ -4,7 +4,8 @@ using Chidelu.Integration.Messaging.RabbitMQ.Samples.Contracts;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 var rabbit = builder.Configuration.GetRequiredSection("RabbitMQ").Get<RabbitMqOptions>()
     ?? throw new InvalidOperationException("RabbitMQ configuration section is missing.");
@@ -41,7 +42,8 @@ var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
+    app.UseSwagger();
+    app.UseSwaggerUI();
 }
 
 app.MapControllers();
