@@ -111,7 +111,10 @@ internal sealed class Consumer(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _stopCts?.Cancel();
+        if(_stopCts != null)
+        {
+            await _stopCts.CancelAsync();
+        }
 
         if (_ch is null || _consumerTag is null)
         {
@@ -135,7 +138,7 @@ internal sealed class Consumer(
             return;
         }
 
-        var ct = _stopCts?.Token ?? CancellationToken.None;
+        var cancellationToken = _stopCts?.Token ?? CancellationToken.None;
         var headers = args.BasicProperties.Headers;
 
         using var activity = BeginActivityScopeFromMetadata(headers);
@@ -155,21 +158,21 @@ internal sealed class Consumer(
                 ?? throw new DeserializationException(
                     $"Deserialization returned null. MessageType: {messageType}");
 
-            await registration.Invoke(serviceProvider, deserialized, ct).ConfigureAwait(false);
+            await registration.Invoke(serviceProvider, deserialized, cancellationToken).ConfigureAwait(false);
 
-            await _ch.BasicAckAsync(args.DeliveryTag, multiple: false, cancellationToken: ct);
+            await _ch.BasicAckAsync(args.DeliveryTag, multiple: false, cancellationToken: cancellationToken);
         }
         catch (FailedToProcessMessageException ex)
         {
-            await HandleNonRetryableAsync(args, ex, "failed-to-process", ct);
+            await HandleNonRetryableAsync(args, ex, "failed-to-process", cancellationToken);
         }
         catch (Exception ex) when (ex is CannotProcessMessageNonTransientException || ex is DeserializationException)
         {
-            await HandleNonRetryableAsync(args, ex, "non-transient", ct);
+            await HandleNonRetryableAsync(args, ex, "non-transient", cancellationToken);
         }
         catch (Exception ex)
         {
-            await HandleRetryableAsync(args, ex, ct);
+            await HandleRetryableAsync(args, ex, cancellationToken);
         }
     }
 
@@ -197,7 +200,7 @@ internal sealed class Consumer(
         var cfg = options.Config;
         var deadLetterRoutingKey = cfg.DeadLetterQueue;
 
-        var mainArgs = new Dictionary<string, object>
+        var mainArgs = new Dictionary<string, object?>
         {
             ["x-queue-type"] = "quorum",
             ["x-delivery-limit"] = cfg.MaxRetryCount
@@ -252,7 +255,7 @@ internal sealed class Consumer(
                     cancellationToken: ct);
             }
 
-            var dlqArgs = new Dictionary<string, object>
+            var dlqArgs = new Dictionary<string, object?>
             {
                 ["x-queue-type"] = "quorum",
                 ["x-dead-letter-exchange"] = string.Empty,
@@ -352,7 +355,7 @@ internal sealed class Consumer(
             $"Unable to resolve message type '{assemblyQualifiedType}'.");
     }
 
-    private static IDisposable BeginActivityScopeFromMetadata(IDictionary<string, object>? headers)
+    private static IDisposable BeginActivityScopeFromMetadata(IDictionary<string, object?>? headers)
     {
         var parentId = Headers.GetString(headers, KnownMetadata.OriginatingOperationId);
         if (!string.IsNullOrWhiteSpace(parentId))
@@ -377,7 +380,7 @@ internal sealed class Consumer(
                 }
 
                 await _ch.CloseAsync();
-                _ch.Dispose();
+                await _ch.DisposeAsync();
             }
         }
         finally
@@ -385,7 +388,7 @@ internal sealed class Consumer(
             if (_conn is not null)
             {
                 await _conn.CloseAsync();
-                _conn.Dispose();
+                await _conn.DisposeAsync();
             }
         }
     }

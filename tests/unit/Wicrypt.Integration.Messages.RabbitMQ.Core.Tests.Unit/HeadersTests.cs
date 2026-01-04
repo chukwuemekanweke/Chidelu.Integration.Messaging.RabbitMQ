@@ -10,7 +10,7 @@ public sealed class HeadersTests
     [Fact]
     public void GetString_Should_Handle_String_And_Bytes()
     {
-        var h = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
+        var h = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
         {
             ["A"] = "hello",
             ["B"] = Encoding.UTF8.GetBytes("world"),
@@ -26,24 +26,24 @@ public sealed class HeadersTests
     [Fact]
     public void GetRequiredString_Should_Throw_If_Missing()
     {
-        var h = new Dictionary<string, object>();
+        var h = new Dictionary<string, object?>();
         Should.Throw<DeserializationException>(() => Headers.GetRequiredString(h, "x"));
     }
 
     [Fact]
     public void SetString_Should_Store_As_Utf8_Bytes()
     {
-        var h = new Dictionary<string, object>();
+        var h = new Dictionary<string, object?>();
         Headers.SetString(h, "key", "value");
-        h["key"].ShouldBeOfType<byte[]>();
-        Encoding.UTF8.GetString((byte[])h["key"]).ShouldBe("value");
+        var bytes = h["key"].ShouldBeOfType<byte[]>();
+        Encoding.UTF8.GetString(bytes).ShouldBe("value");
     }
 
     [Fact]
     public void Guid_Roundtrip_Works()
     {
         var id = Guid.NewGuid();
-        var h = new Dictionary<string, object>();
+        var h = new Dictionary<string, object?>();
         Headers.SetGuid(h, "id", id);
 
         Headers.TryGetGuid(h, "id", out var parsed).ShouldBeTrue();

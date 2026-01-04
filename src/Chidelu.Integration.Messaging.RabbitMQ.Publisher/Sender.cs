@@ -23,10 +23,10 @@ public sealed class Sender(SenderOptions opt)
             ConsumerDispatchConcurrency = opt.Config.ConcurrentMessageCount
         };
 
-        _conn = await cf.CreateConnectionAsync($"{opt.Config.ServiceName}-commands");
-        _ch = await _conn.CreateChannelAsync();
+        _conn = await cf.CreateConnectionAsync($"{opt.Config.ServiceName}-commands", cancellationToken);
+        _ch = await _conn.CreateChannelAsync(cancellationToken: cancellationToken);
 
-        await TopologyInstaller.EnsureAsync(_ch, opt.Config);
+        await TopologyInstaller.EnsureAsync(_ch, opt.Config, cancellationToken);
     }
 
     public async Task SendAsync<T>(
@@ -51,27 +51,27 @@ public sealed class Sender(SenderOptions opt)
         var routingKey = ResolveRoutingKey<T>();
 
         var body = opt.Serializer.Serialize(command);
-        var props = CreateProps(command, extraHeaders);
+        var properties = BuildProperties(command, extraHeaders);
 
         await _ch.BasicPublishAsync(
             exchange: exchange,
             routingKey: routingKey,
             mandatory: false,
-            basicProperties: props,
+            basicProperties: properties,
             body: body,
             cancellationToken: cancellationToken);
     }
 
-    private IBasicProperties CreateProps<T>(T command, IDictionary<string, string>? extraHeaders)
+    private BasicProperties BuildProperties<T>(T command, IDictionary<string, string>? extraHeaders)
         where T : ICommand
     {
-        var p = _ch!.CreateBasicProperties();
-        p.Persistent = true;
-        p.ContentType = "application/json";
-        p.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        p.AppId = opt.Config.ServiceName;
+        var properties = new BasicProperties();
+        properties.Persistent = true;
+        properties.ContentType = "application/json";
+        properties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        properties.AppId = opt.Config.ServiceName;
 
-        var headers = p.Headers ??= new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var headers = properties.Headers ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         Headers.SetString(headers, KnownMetadata.Type, typeof(T).AssemblyQualifiedName!);
         Headers.SetGuid(headers, KnownMetadata.MessageId, ResolveMessageId(command));
 
@@ -95,7 +95,7 @@ public sealed class Sender(SenderOptions opt)
         {
             foreach (var kv in extraHeaders)
             {
-                if (Publisher.IsReservedHeader(kv.Key))
+                if (Headers.IsReservedHeader(kv.Key))
                 {
                     continue;
                 }
@@ -103,7 +103,7 @@ public sealed class Sender(SenderOptions opt)
             }
         }
 
-        return p;
+        return properties;
     }
 
     private static string ResolveRoutingKey<T>()
@@ -137,14 +137,14 @@ public sealed class Sender(SenderOptions opt)
         if (_ch is not null)
         {
             await _ch.CloseAsync();
-            _ch.Dispose();
+            await _ch.DisposeAsync();
 
         }
 
         if (_conn is not null)
         {
             await _conn.CloseAsync();
-            _conn.Dispose();
+            await _conn.DisposeAsync();
         }
     }
 }

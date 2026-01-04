@@ -10,7 +10,7 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
     private IConnection? _conn;
     private IChannel? _ch;
 
-    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    public async Task InitializeAsync(CancellationToken cancellationToken)
     {
         var cf = new ConnectionFactory
         {
@@ -22,10 +22,10 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
             ConsumerDispatchConcurrency = opt.Config.ConcurrentMessageCount
         };
 
-        _conn = await cf.CreateConnectionAsync($"{opt.Config.ServiceName}-publisher");
-        _ch = await _conn.CreateChannelAsync();
+        _conn = await cf.CreateConnectionAsync($"{opt.Config.ServiceName}-publisher", cancellationToken);
+        _ch = await _conn.CreateChannelAsync(cancellationToken: cancellationToken);
 
-        await TopologyInstaller.EnsureAsync(_ch, opt.Config);
+        await TopologyInstaller.EnsureAsync(_ch, opt.Config, cancellationToken);
     }
 
     public async Task PublishAsync<T>(
@@ -41,10 +41,10 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
             throw new InvalidOperationException("Publisher not initialized. Call InitializeAsync() before publishing.");
         }
 
-        var rk = ResolveRoutingKey<T>();
+        var routingKey = ResolveRoutingKey<T>();
         var body = opt.Serializer.Serialize(@event);
 
-        var props = CreateProps(@event, extraHeaders);
+        var properties = BuildProperties(@event, extraHeaders);
 
         if(string.IsNullOrWhiteSpace(opt.Config.EventsExchange))
         {
@@ -53,14 +53,14 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
 
         await _ch.BasicPublishAsync(
             exchange: opt.Config.EventsExchange!,
-            routingKey: rk,
+            routingKey: routingKey,
             mandatory: false,
-            basicProperties: props,
+            basicProperties: properties,
             body: body,
             cancellationToken: ct);
     }
 
-    public Task PublishBatchAsync<T>(
+    public async Task PublishBatchAsync<T>(
         IEnumerable<T> events,
         IDictionary<string, string>? sharedHeaders = null,
         CancellationToken ct = default)
@@ -78,37 +78,29 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
             ArgumentException.ThrowIfNullOrWhiteSpace(opt.Config.EventsExchange, nameof(opt.Config.EventsExchange));
         }
 
-        var rk = ResolveRoutingKey<T>();
-        var batch = _ch.CreateBasicPublishBatch();
-
+        var routingKey = ResolveRoutingKey<T>();
         var exchange = opt.Config.EventsExchange!;
 
-        var count = 0;
         foreach (var e in events)
         {
             var body = opt.Serializer.Serialize(e);
-            var props = CreateProps(e, sharedHeaders);
-            batch.Add(
-                exchange: exchange,
-                routingKey: rk,
-                mandatory: false,
-                properties: props,
-                body: body);
-            count++;
-        }
+            var properties = BuildProperties(e, sharedHeaders);
 
-        if (count > 0)
-        {
-            batch.Publish();
+            await _ch.BasicPublishAsync(
+                exchange: exchange,
+                routingKey: routingKey,
+                mandatory: false,
+                basicProperties: properties,
+                body: body,
+                cancellationToken: ct);
         }
-        return Task.CompletedTask;
     }
 
-    private IBasicProperties CreateProps<T>(T @event, IDictionary<string, string>? extraHeaders)
+    private BasicProperties BuildProperties<T>(T @event, IDictionary<string, string>? extraHeaders)
         where T : IEvent
     {
-        var basicProperties = CreateBaseProps(extraHeaders);
-        var headers = basicProperties.Headers ??= new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var basicProperties = CreateBaseProperties(extraHeaders);
+        var headers = basicProperties.Headers ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
         Headers.SetString(headers, KnownMetadata.Type, typeof(T).AssemblyQualifiedName!);
         Headers.SetGuid(headers, KnownMetadata.MessageId, ResolveMessageId(@event));
@@ -117,7 +109,7 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         {
             foreach (var kv in extraHeaders)
             {
-                if (IsReservedHeader(kv.Key))
+                if (Headers.IsReservedHeader(kv.Key))
                 {
                     continue;
                 }
@@ -128,15 +120,15 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         return basicProperties;
     }
 
-    private IBasicProperties CreateBaseProps(IDictionary<string, string>? extraHeaders)
+    private BasicProperties CreateBaseProperties(IDictionary<string, string>? extraHeaders)
     {
-        var basicProperties = _ch!.CreateBasicProperties();
+        var basicProperties = new BasicProperties();
         basicProperties.Persistent = true;
         basicProperties.ContentType = "application/json";
         basicProperties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         basicProperties.AppId = opt.Config.ServiceName;
 
-        var headers = basicProperties.Headers ??= new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        var headers = basicProperties.Headers ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
         if (extraHeaders?.TryGetValue(KnownMetadata.CorrelationId, out var correlationId) == true
             && !string.IsNullOrWhiteSpace(correlationId))
@@ -178,13 +170,6 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         }
     }
 
-    public static bool IsReservedHeader(string key)
-        => string.Equals(key, KnownMetadata.Type, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(key, KnownMetadata.MessageId, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(key, KnownMetadata.CorrelationId, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(key, KnownMetadata.CausationId, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(key, KnownMetadata.OriginatingOperationId, StringComparison.OrdinalIgnoreCase);
-
     private static string ResolveRoutingKey<T>()
         => typeof(T).AssemblyQualifiedName
            ?? typeof(T).FullName
@@ -195,14 +180,13 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         if (_ch is not null)
         {
             await _ch.CloseAsync();
-            _ch.Dispose();
-
+            await _ch.DisposeAsync();
         }
 
         if (_conn is not null)
         {
             await _conn.CloseAsync();
-            _conn.Dispose();
+            await _conn.DisposeAsync();
         }
     }
 }
