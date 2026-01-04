@@ -8,7 +8,7 @@ using CoreHeaders = Chidelu.Integration.Messaging.RabbitMQ.Core.Headers;
 
 namespace Chidelu.Integration.Messaging.RabbitMQ.Consumer.Tests.Unit;
 
-public sealed class ConsumerTests
+public sealed class MessageDispatcherTests
 {
     private sealed record SampleMessage(int Value);
 
@@ -140,7 +140,7 @@ public sealed class ConsumerTests
         return new MessageDispatcher(
             services,
             serializer,
-            NullLogger<Consumer>.Instance,
+            NullLogger.Instance,
             key => handlers.TryGetValue(key, out var registration) ? registration : null);
     }
 

@@ -65,7 +65,7 @@ public sealed class PublisherTests
         await sut.PublishAsync(payload, CancellationToken.None, extraHeaders);
 
         capturedExchange.ShouldBe("x.events");
-        capturedRoutingKey.ShouldBe(typeof(OrderCreated).AssemblyQualifiedName);
+        capturedRoutingKey.ShouldBe(typeof(OrderCreated).FullName);
 
         capturedProperties.ShouldNotBeNull();
         var headers = capturedProperties!.Headers.ShouldNotBeNull();

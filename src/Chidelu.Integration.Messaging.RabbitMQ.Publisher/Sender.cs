@@ -129,8 +129,7 @@ public sealed class Sender(SenderOptions opt)
     }
 
     private static string ResolveRoutingKey<T>()
-        => typeof(T).AssemblyQualifiedName
-           ?? typeof(T).FullName
+        => typeof(T).FullName
            ?? typeof(T).Name;
 
     private static Guid ResolveMessageId<T>(T command)

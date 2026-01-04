@@ -182,8 +182,7 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
     }
 
     private static string ResolveRoutingKey<T>()
-        => typeof(T).AssemblyQualifiedName
-           ?? typeof(T).FullName
+        => typeof(T).FullName
            ?? typeof(T).Name;
 
     public async ValueTask DisposeAsync()

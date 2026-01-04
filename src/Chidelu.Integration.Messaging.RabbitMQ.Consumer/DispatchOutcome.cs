@@ -2,7 +2,7 @@ namespace Chidelu.Integration.Messaging.RabbitMQ.Consumer;
 
 internal enum DispatchOutcome
 {
-    Ack,
-    NackRequeue,
-    NackDrop
+    Ack = 1,
+    NackRequeue = 2,
+    NackDrop = 3
 }

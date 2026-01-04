@@ -17,5 +17,5 @@ public sealed class ConsumerConfig
 
     public ushort ConcurrentMessageCount { get; init; } = 1;
 
-    public string Key => $"{HostName}:{Port}:{VirtualHost}:{ServiceName}:{QueueName}";
+    public string Key => $"{HostName}:{Port}:{VirtualHost}:{ServiceName}:{QueueName}:Consumer";
 }
