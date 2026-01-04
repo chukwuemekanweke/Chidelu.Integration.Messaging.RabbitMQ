@@ -1,4 +1,4 @@
-﻿namespace Chidelu.Integration.Messaging.RabbitMQ.Publisher;
+namespace Chidelu.Integration.Messaging.RabbitMQ.Core;
 
 public interface IAsyncInitializable
 {
