@@ -9,7 +9,7 @@ namespace Chidelu.Integration.Messaging.RabbitMQ.Consumer;
 internal sealed class MessageDispatcher(
     IServiceProvider serviceProvider,
     IRabbitSerializer serializer,
-    ILogger<Consumer> logger,
+    ILogger logger,
     Func<string, HandlerRegistry?> handlerResolver)
 {
     public async Task<DispatchOutcome> DispatchAsync(MessageEnvelope envelope, CancellationToken cancellationToken)

@@ -47,7 +47,7 @@ builder.Services
 
 builder.Services.AddHostedService(sp =>
     new Worker(
-        sp.GetRequiredKeyedService<IConsumer>(subscriberConfig.Key),
+        sp.GetRequiredKeyedService<ISubscriber>(subscriberConfig.Key),
         sp.GetRequiredKeyedService<IConsumer>(consumerConfig.Key),
         sp.GetRequiredService<ILogger<Worker>>()));
 

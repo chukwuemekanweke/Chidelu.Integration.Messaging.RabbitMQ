@@ -56,7 +56,7 @@ public sealed class PublisherIntegrationTests(RabbitMqFixture fixture)
             .AddPublisher(publisherConfig)
             .BuildServiceProvider();
 
-        var subscriber = services.GetRequiredKeyedService<IConsumer>(subscriberConfig.Key);
+        var subscriber = services.GetRequiredKeyedService<ISubscriber>(subscriberConfig.Key);
         await subscriber.StartAsync(CancellationToken.None);
 
         var publisher = services.GetRequiredKeyedService<IPublisher>(publisherConfig.Key);

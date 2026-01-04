@@ -3,7 +3,7 @@ using Chidelu.Integration.Messaging.RabbitMQ.Consumer;
 namespace Chidelu.Integration.Messaging.RabbitMQ.Samples.Worker;
 
 public sealed class Worker(
-    IConsumer subscriber,
+    ISubscriber subscriber,
     IConsumer consumer,
     ILogger<Worker> logger) : BackgroundService
 {

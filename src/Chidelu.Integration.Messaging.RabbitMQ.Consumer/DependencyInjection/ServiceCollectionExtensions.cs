@@ -16,7 +16,7 @@ public static class ServiceCollectionExtensions
     {
         var runtimeConfig = BuildRuntimeConfig(config, ExchangeType.Fanout);
         var dependencyKeyName = dependencyInjectionKey ?? config.Key;
-        return AddConsumerInternal(services, runtimeConfig, configure, dependencyKeyName);
+        return AddSubscriberInternal(services, runtimeConfig, configure, dependencyKeyName);
     }
 
     public static IServiceCollection AddConsumer(
@@ -51,10 +51,40 @@ public static class ServiceCollectionExtensions
         services.AddKeyedSingleton<IConsumer>(dependencyInjectionKey, (sp, _) =>
         {
             var options = sp.GetRequiredKeyedService<ConsumerOptions>(dependencyInjectionKey);
-            var logger = sp.GetRequiredService<ILogger<Consumer>>();
             var handlerMap = sp.GetRequiredKeyedService<ConsumerHandlerMap>(dependencyInjectionKey);
 
+            var logger = sp.GetRequiredService<ILogger<Consumer>>();
             return new Consumer(sp, options, handlerMap, logger);
+        });
+
+        return services;
+    }
+
+    private static IServiceCollection AddSubscriberInternal(
+        IServiceCollection services,
+        ConsumerRuntimeConfig config,
+        Action<ConsumerBuilder> configure,
+        string dependencyInjectionKey)
+    {
+        services.TryAddSingleton<IRabbitSerializer, DefaultRabbitSerializer>();
+
+        services.AddKeyedSingleton<ConsumerOptions>(dependencyInjectionKey, (sp, _) =>
+        {
+            var serializer = sp.GetRequiredService<IRabbitSerializer>();
+            return new ConsumerOptions(config, serializer);
+        });
+
+        var map = new ConsumerHandlerMap();
+        configure(new ConsumerBuilder(services, map));
+        services.AddKeyedSingleton<ConsumerHandlerMap>(dependencyInjectionKey, map);
+
+        services.AddKeyedSingleton<ISubscriber>(dependencyInjectionKey, (sp, _) =>
+        {
+            var options = sp.GetRequiredKeyedService<ConsumerOptions>(dependencyInjectionKey);
+            var handlerMap = sp.GetRequiredKeyedService<ConsumerHandlerMap>(dependencyInjectionKey);
+            var logger = sp.GetRequiredService<ILogger<Subscriber>>();
+
+            return new Subscriber(sp, options, handlerMap, logger);
         });
 
         return services;
