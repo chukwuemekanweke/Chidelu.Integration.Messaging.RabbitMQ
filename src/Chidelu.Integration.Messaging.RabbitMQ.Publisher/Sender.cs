@@ -31,8 +31,8 @@ public sealed class Sender(SenderOptions opt)
 
     public async Task SendAsync<T>(
         T command,
-        IDictionary<string, string>? extraHeaders = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        IDictionary<string, string>? extraHeaders = null)
         where T : ICommand
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -65,15 +65,34 @@ public sealed class Sender(SenderOptions opt)
     private BasicProperties BuildProperties<T>(T command, IDictionary<string, string>? extraHeaders)
         where T : ICommand
     {
+        var properties = CreateBaseProperties(extraHeaders);
+        var headers = properties.Headers ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        Headers.SetString(headers, KnownMetadata.Type, typeof(T).AssemblyQualifiedName!);
+        Headers.SetGuid(headers, KnownMetadata.MessageId, ResolveMessageId(command));
+
+        if (extraHeaders is not null)
+        {
+            foreach (var kv in extraHeaders)
+            {
+                if (Headers.IsReservedHeader(kv.Key))
+                {
+                    continue;
+                }
+                Headers.SetString(headers, kv.Key, kv.Value);
+            }
+        }
+
+        return properties;
+    }
+
+    private BasicProperties CreateBaseProperties(IDictionary<string, string>? extraHeaders)
+    {
         var properties = new BasicProperties();
         properties.Persistent = true;
         properties.ContentType = "application/json";
         properties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        properties.AppId = opt.Config.ServiceName;
 
         var headers = properties.Headers ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-        Headers.SetString(headers, KnownMetadata.Type, typeof(T).AssemblyQualifiedName!);
-        Headers.SetGuid(headers, KnownMetadata.MessageId, ResolveMessageId(command));
 
         if (extraHeaders?.TryGetValue(KnownMetadata.CorrelationId, out var corr) == true
             && !string.IsNullOrWhiteSpace(corr))
@@ -89,18 +108,6 @@ public sealed class Sender(SenderOptions opt)
         if (Activity.Current is { } act)
         {
             Headers.SetString(headers, KnownMetadata.OriginatingOperationId, act.Id!);
-        }
-
-        if (extraHeaders is not null)
-        {
-            foreach (var kv in extraHeaders)
-            {
-                if (Headers.IsReservedHeader(kv.Key))
-                {
-                    continue;
-                }
-                Headers.SetString(headers, kv.Key, kv.Value);
-            }
         }
 
         return properties;

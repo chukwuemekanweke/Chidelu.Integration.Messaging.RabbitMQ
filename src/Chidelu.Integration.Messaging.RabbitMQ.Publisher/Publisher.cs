@@ -30,11 +30,11 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
 
     public async Task PublishAsync<T>(
         T @event,
-        IDictionary<string, string>? extraHeaders = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken,
+        IDictionary<string, string>? extraHeaders = null)
         where T : IEvent
     {
-        ct.ThrowIfCancellationRequested();
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (_ch is null)
         {
@@ -57,16 +57,16 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
             mandatory: false,
             basicProperties: properties,
             body: body,
-            cancellationToken: ct);
+            cancellationToken: cancellationToken);
     }
 
     public async Task PublishBatchAsync<T>(
         IEnumerable<T> events,
-        IDictionary<string, string>? sharedHeaders = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken,
+        IDictionary<string, string>? sharedHeaders = null)
         where T : IEvent
     {
-        ct.ThrowIfCancellationRequested();
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (_ch is null)
         {
@@ -92,7 +92,7 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
                 mandatory: false,
                 basicProperties: properties,
                 body: body,
-                cancellationToken: ct);
+                cancellationToken: cancellationToken);
         }
     }
 
@@ -126,7 +126,6 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         basicProperties.Persistent = true;
         basicProperties.ContentType = "application/json";
         basicProperties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
-        basicProperties.AppId = opt.Config.ServiceName;
 
         var headers = basicProperties.Headers ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 

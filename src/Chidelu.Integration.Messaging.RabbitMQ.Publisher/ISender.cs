@@ -6,7 +6,7 @@ public interface ISender
 {
     Task SendAsync<T>(
         T command,
-        IDictionary<string, string>? extraHeaders = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken,
+        IDictionary<string, string>? extraHeaders = null)
         where T : ICommand;
 }
