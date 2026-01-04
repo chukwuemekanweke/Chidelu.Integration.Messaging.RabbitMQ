@@ -12,12 +12,13 @@ internal sealed class Consumer(
     IServiceProvider serviceProvider,
     ConsumerOptions options,
     ConsumerHandlerMap map,
-    ILogger<Consumer>? logger = null) : IConsumer, IAsyncDisposable, IAsyncInitializable
+    ILogger<Consumer>? logger = null) : IConsumer, IAsyncDisposable
 {
     private readonly ILogger<Consumer> _logger = logger ?? NullLogger<Consumer>.Instance;
     private readonly ConcurrentDictionary<string, HandlerRegistry> _handlers = new(StringComparer.Ordinal);
     private int _handlersLoaded;
     private MessageDispatcher? _dispatcher;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
 
     private IConnection? _conn;
     private IChannel? _ch;
@@ -52,41 +53,51 @@ internal sealed class Consumer(
         return this;
     }
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
         if (_ch is not null)
         {
             return;
         }
 
-        var cfg = options.Config;
-        var cf = new ConnectionFactory
+        await _initLock.WaitAsync(cancellationToken);
+        try
         {
-            HostName = cfg.HostName,
-            Port = cfg.Port,
-            UserName = cfg.UserName,
-            Password = cfg.Password,
-            VirtualHost = cfg.VirtualHost,
-            ConsumerDispatchConcurrency = cfg.ConcurrentMessageCount
-        };
+            if (_ch is not null)
+            {
+                return;
+            }
 
-        _conn = await cf.CreateConnectionAsync($"{cfg.ServiceName}-consumer");
-        _ch = await _conn.CreateChannelAsync();
+            var cfg = options.Config;
+            var cf = new ConnectionFactory
+            {
+                HostName = cfg.HostName,
+                Port = cfg.Port,
+                UserName = cfg.UserName,
+                Password = cfg.Password,
+                VirtualHost = cfg.VirtualHost,
+                ConsumerDispatchConcurrency = cfg.ConcurrentMessageCount
+            };
 
-        if (cfg.PrefetchCount > 0)
-        {
-            await _ch.BasicQosAsync(0, cfg.PrefetchCount, false, cancellationToken);
+            _conn = await cf.CreateConnectionAsync($"{cfg.ServiceName}-consumer");
+            _ch = await _conn.CreateChannelAsync();
+
+            if (cfg.PrefetchCount > 0)
+            {
+                await _ch.BasicQosAsync(0, cfg.PrefetchCount, false, cancellationToken);
+            }
+
+            await EnsureTopologyAsync(cancellationToken);
         }
-
-        await EnsureTopologyAsync(cancellationToken);
+        finally
+        {
+            _initLock.Release();
+        }
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        if (_ch is null)
-        {
-            throw new InvalidOperationException("Consumer not initialized. Call InitializeAsync() before starting.");
-        }
+        await EnsureInitializedAsync(cancellationToken);
 
         if (_consumerTag is not null)
         {
@@ -97,10 +108,11 @@ internal sealed class Consumer(
 
         _stopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        var consumer = new AsyncEventingBasicConsumer(_ch);
+        var channel = _ch!;
+        var consumer = new AsyncEventingBasicConsumer(channel);
         consumer.ReceivedAsync += HandleMessageAsync;
 
-        _consumerTag = await _ch.BasicConsumeAsync(
+        _consumerTag = await channel.BasicConsumeAsync(
             queue: options.Config.QueueName,
             autoAck: false,
             consumer: consumer,

@@ -6,27 +6,46 @@ using Headers = Chidelu.Integration.Messaging.RabbitMQ.Core.Headers;
 namespace Chidelu.Integration.Messaging.RabbitMQ.Publisher;
 
 public sealed class Sender(SenderOptions opt)
-    : ISender, IAsyncDisposable, IAsyncInitializable
+    : ISender, IAsyncDisposable
 {
     private IConnection? _conn;
     private IChannel? _ch;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
-        var cf = new ConnectionFactory
+        if (_ch is not null)
         {
-            HostName = opt.Config.HostName,
-            Port = opt.Config.Port,
-            UserName = opt.Config.UserName,
-            Password = opt.Config.Password,
-            VirtualHost = opt.Config.VirtualHost,
-            ConsumerDispatchConcurrency = opt.Config.ConcurrentMessageCount
-        };
+            return;
+        }
 
-        _conn = await cf.CreateConnectionAsync($"{opt.Config.ServiceName}-commands", cancellationToken);
-        _ch = await _conn.CreateChannelAsync(cancellationToken: cancellationToken);
+        await _initLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_ch is not null)
+            {
+                return;
+            }
 
-        await TopologyInstaller.EnsureAsync(_ch, opt.Config, cancellationToken);
+            var cf = new ConnectionFactory
+            {
+                HostName = opt.Config.HostName,
+                Port = opt.Config.Port,
+                UserName = opt.Config.UserName,
+                Password = opt.Config.Password,
+                VirtualHost = opt.Config.VirtualHost,
+                ConsumerDispatchConcurrency = opt.Config.ConcurrentMessageCount
+            };
+
+            _conn = await cf.CreateConnectionAsync($"{opt.Config.ServiceName}-commands", cancellationToken);
+            _ch = await _conn.CreateChannelAsync(cancellationToken: cancellationToken);
+
+            await TopologyInstaller.EnsureAsync(_ch, opt.Config, cancellationToken);
+        }
+        finally
+        {
+            _initLock.Release();
+        }
     }
 
     public async Task SendAsync<T>(
@@ -36,24 +55,21 @@ public sealed class Sender(SenderOptions opt)
         where T : ICommand
     {
         cancellationToken.ThrowIfCancellationRequested();
-
-        if (_ch is null)
-        {
-            throw new InvalidOperationException("Sender not initialized. Call InitializeAsync() before sending.");
-        }
+        await EnsureInitializedAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(opt.Config.CommandsExchange))
         {
             throw new InvalidOperationException("CommandsExchange is required for command publishing.");
         }
 
+        var channel = _ch!;
         var exchange = opt.Config.CommandsExchange!;
         var routingKey = ResolveRoutingKey<T>();
 
         var body = opt.Serializer.Serialize(command);
         var properties = BuildProperties(command, extraHeaders);
 
-        await _ch.BasicPublishAsync(
+        await channel.BasicPublishAsync(
             exchange: exchange,
             routingKey: routingKey,
             mandatory: false,
