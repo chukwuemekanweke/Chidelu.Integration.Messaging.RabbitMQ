@@ -23,8 +23,7 @@ public sealed class PublisherTests
             UserName = "user",
             Password = "pass",
             VirtualHost = "/",
-            EventsExchange = "x.events",
-            ConcurrentMessageCount = 1
+            EventsExchange = "x.events"
         };
 
         var options = new PublisherOptions(config, new DefaultRabbitSerializer());
@@ -89,8 +88,7 @@ public sealed class PublisherTests
             UserName = "user",
             Password = "pass",
             VirtualHost = "/",
-            EventsExchange = "x.events",
-            ConcurrentMessageCount = 1
+            EventsExchange = "x.events"
         };
 
         var options = new PublisherOptions(config, new DefaultRabbitSerializer());
@@ -127,8 +125,7 @@ public sealed class PublisherTests
             UserName = "user",
             Password = "pass",
             VirtualHost = "/",
-            EventsExchange = "x.events",
-            ConcurrentMessageCount = 1
+            EventsExchange = "x.events"
         };
 
         var options = new PublisherOptions(config, new DefaultRabbitSerializer());

@@ -31,8 +31,7 @@ public sealed class PublisherIntegrationTests(RabbitMqFixture fixture)
             UserName = fixture.UserName,
             Password = fixture.Password,
             VirtualHost = fixture.VirtualHost,
-            EventsExchange = exchangeName,
-            ConcurrentMessageCount = 1
+            EventsExchange = exchangeName
         };
 
         var subscriberConfig = new SubscriberConfig

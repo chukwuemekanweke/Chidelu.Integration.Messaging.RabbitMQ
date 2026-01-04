@@ -11,7 +11,5 @@ public sealed class SenderConfig
 
     public required string CommandsExchange { get; init; }
 
-    public ushort ConcurrentMessageCount { get; init; }
-
     public string Key => $"{HostName}:{Port}:{VirtualHost}:{ServiceName}";
 }

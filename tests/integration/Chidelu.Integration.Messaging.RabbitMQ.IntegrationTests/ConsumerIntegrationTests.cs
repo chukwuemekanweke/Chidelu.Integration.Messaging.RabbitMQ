@@ -61,8 +61,7 @@ public sealed class ConsumerIntegrationTests(RabbitMqFixture fixture)
             UserName = fixture.UserName,
             Password = fixture.Password,
             VirtualHost = fixture.VirtualHost,
-            CommandsExchange = exchangeName,
-            ConcurrentMessageCount = 1
+            CommandsExchange = exchangeName
         };
 
         var services = new ServiceCollection()
@@ -124,8 +123,7 @@ public sealed class ConsumerIntegrationTests(RabbitMqFixture fixture)
             UserName = fixture.UserName,
             Password = fixture.Password,
             VirtualHost = fixture.VirtualHost,
-            CommandsExchange = exchangeName,
-            ConcurrentMessageCount = 1
+            CommandsExchange = exchangeName
         };
 
         var services = new ServiceCollection()

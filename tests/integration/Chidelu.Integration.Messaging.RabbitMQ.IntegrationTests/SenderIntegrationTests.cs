@@ -33,8 +33,7 @@ public sealed class SenderIntegrationTests(RabbitMqFixture fixture)
             UserName = fixture.UserName,
             Password = fixture.Password,
             VirtualHost = fixture.VirtualHost,
-            CommandsExchange = exchangeName,
-            ConcurrentMessageCount = 1
+            CommandsExchange = exchangeName
         };
 
         var consumerConfigOne = new ConsumerConfig

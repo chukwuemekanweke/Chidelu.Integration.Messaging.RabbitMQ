@@ -24,8 +24,7 @@ public sealed class SenderTests
             UserName = "user",
             Password = "pass",
             VirtualHost = "/",
-            CommandsExchange = "x.commands",
-            ConcurrentMessageCount = 1
+            CommandsExchange = "x.commands"
         };
 
         var options = new SenderOptions(config, new DefaultRabbitSerializer());
@@ -90,8 +89,7 @@ public sealed class SenderTests
             UserName = "user",
             Password = "pass",
             VirtualHost = "/",
-            CommandsExchange = "x.commands",
-            ConcurrentMessageCount = 1
+            CommandsExchange = "x.commands"
         };
 
         var options = new SenderOptions(config, new DefaultRabbitSerializer());
@@ -139,8 +137,7 @@ public sealed class SenderTests
             UserName = "user",
             Password = "pass",
             VirtualHost = "/",
-            CommandsExchange = "x.commands",
-            ConcurrentMessageCount = 1
+            CommandsExchange = "x.commands"
         };
 
         var options = new SenderOptions(config, new DefaultRabbitSerializer());

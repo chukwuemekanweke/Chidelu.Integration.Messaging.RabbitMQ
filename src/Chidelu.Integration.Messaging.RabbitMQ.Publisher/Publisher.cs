@@ -32,8 +32,7 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
                 Port = opt.Config.Port,
                 UserName = opt.Config.UserName,
                 Password = opt.Config.Password,
-                VirtualHost = opt.Config.VirtualHost,
-                ConsumerDispatchConcurrency = opt.Config.ConcurrentMessageCount
+                VirtualHost = opt.Config.VirtualHost
             };
 
             _conn = await cf.CreateConnectionAsync($"{opt.Config.ServiceName}-publisher", cancellationToken);
