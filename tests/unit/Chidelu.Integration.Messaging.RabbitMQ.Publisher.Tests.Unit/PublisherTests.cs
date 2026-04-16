@@ -26,7 +26,7 @@ public sealed class PublisherTests
             EventsExchange = "x.events"
         };
 
-        var options = new PublisherOptions(config, new DefaultRabbitSerializer());
+        var options = new PublisherOptions(config, new DefaultRabbitSerializer(), new AsyncLocalMessageContextAccessor());
         var sut = new Publisher(options);
 
         var channel = Substitute.For<IChannel>();
@@ -74,7 +74,7 @@ public sealed class PublisherTests
         CoreHeaders.TryGetGuid(headers, KnownMetadata.MessageId, out var parsed).ShouldBeTrue();
         parsed.ShouldBe(messageId);
         CoreHeaders.GetString(headers, KnownMetadata.CorrelationId).ShouldBe("corr-1");
-        CoreHeaders.GetString(headers, KnownMetadata.OriginatingOperationId).ShouldBe(activity.Id);
+        CoreHeaders.GetString(headers, KnownMetadata.ParentOperationId).ShouldBe(activity.Id);
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class PublisherTests
             EventsExchange = "x.events"
         };
 
-        var options = new PublisherOptions(config, new DefaultRabbitSerializer());
+        var options = new PublisherOptions(config, new DefaultRabbitSerializer(), new AsyncLocalMessageContextAccessor());
         var sut = new Publisher(options);
 
         var channel = Substitute.For<IChannel>();
@@ -128,7 +128,7 @@ public sealed class PublisherTests
             EventsExchange = "x.events"
         };
 
-        var options = new PublisherOptions(config, new DefaultRabbitSerializer());
+        var options = new PublisherOptions(config, new DefaultRabbitSerializer(), new AsyncLocalMessageContextAccessor());
         var sut = new Publisher(options);
 
         var channel = Substitute.For<IChannel>();
@@ -163,5 +163,105 @@ public sealed class PublisherTests
         var field = typeof(Publisher).GetField("_ch", BindingFlags.Instance | BindingFlags.NonPublic);
         field.ShouldNotBeNull();
         field!.SetValue(target, channel);
+    }
+
+    [Fact]
+    public async Task PublishAsync_InheritsCorrelationId_AndSetsCausationId_FromIncomingContext()
+    {
+        var config = new PublisherConfig
+        {
+            ServiceName = "svc",
+            HostName = "localhost",
+            Port = 5672,
+            UserName = "user",
+            Password = "pass",
+            VirtualHost = "/",
+            EventsExchange = "x.events"
+        };
+
+        var accessor = new AsyncLocalMessageContextAccessor();
+        accessor.Current = new TestMessageMetadataContext(Guid.CreateVersion7(), "corr-inbound");
+
+        var options = new PublisherOptions(config, new DefaultRabbitSerializer(), accessor);
+        var sut = new Publisher(options);
+
+        var channel = Substitute.For<IChannel>();
+        BasicProperties? capturedProperties = null;
+
+        channel.BasicPublishAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<BasicProperties>(),
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ValueTask.CompletedTask)
+            .AndDoes(ci => capturedProperties = ci.ArgAt<BasicProperties>(3));
+
+        SetChannel(sut, channel);
+
+        await sut.PublishAsync(new OrderCreated(Guid.CreateVersion7()), CancellationToken.None);
+
+        var headers = capturedProperties!.Headers.ShouldNotBeNull();
+        CoreHeaders.GetString(headers, KnownMetadata.CorrelationId).ShouldBe("corr-inbound");
+        CoreHeaders.GetString(headers, KnownMetadata.CausationId).ShouldBe(accessor.Current!.MessageId!.Value.ToString());
+    }
+
+    [Fact]
+    public async Task PublishAsync_ExplicitHeadersOverrideIncomingContext()
+    {
+        var config = new PublisherConfig
+        {
+            ServiceName = "svc",
+            HostName = "localhost",
+            Port = 5672,
+            UserName = "user",
+            Password = "pass",
+            VirtualHost = "/",
+            EventsExchange = "x.events"
+        };
+
+        var accessor = new AsyncLocalMessageContextAccessor();
+        accessor.Current = new TestMessageMetadataContext(Guid.CreateVersion7(), "corr-inbound");
+
+        var options = new PublisherOptions(config, new DefaultRabbitSerializer(), accessor);
+        var sut = new Publisher(options);
+
+        var channel = Substitute.For<IChannel>();
+        BasicProperties? capturedProperties = null;
+
+        channel.BasicPublishAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<BasicProperties>(),
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ValueTask.CompletedTask)
+            .AndDoes(ci => capturedProperties = ci.ArgAt<BasicProperties>(3));
+
+        SetChannel(sut, channel);
+
+        var explicitHeaders = new Dictionary<string, string>
+        {
+            [KnownMetadata.CorrelationId] = "corr-explicit",
+            [KnownMetadata.CausationId] = "cause-explicit"
+        };
+
+        await sut.PublishAsync(new OrderCreated(Guid.CreateVersion7()), CancellationToken.None, explicitHeaders);
+
+        var headers = capturedProperties!.Headers.ShouldNotBeNull();
+        CoreHeaders.GetString(headers, KnownMetadata.CorrelationId).ShouldBe("corr-explicit");
+        CoreHeaders.GetString(headers, KnownMetadata.CausationId).ShouldBe("cause-explicit");
+    }
+
+    private sealed class TestMessageMetadataContext(Guid? messageId, string? correlationId) : IMessageMetadataContext
+    {
+        public IReadOnlyDictionary<string, object?> Headers { get; } = new Dictionary<string, object?>();
+        public string? MessageType => null;
+        public Guid? MessageId { get; } = messageId;
+        public string? CorrelationId { get; } = correlationId;
+        public string? CausationId => null;
+        public string? ParentOperationId => null;
     }
 }

@@ -29,7 +29,7 @@ internal sealed class MessageDispatcher(
                 ?? throw new DeserializationException(
                     $"Deserialization returned null. MessageType: {messageType}");
 
-            await registration.Invoke(serviceProvider, deserialized, cancellationToken);
+            await registration.Invoke(serviceProvider, deserialized, envelope, cancellationToken);
             return DispatchOutcome.Ack;
         }
         catch (FailedToProcessMessageException ex)
@@ -63,7 +63,7 @@ internal sealed class MessageDispatcher(
 
     private static IDisposable BeginActivityScopeFromMetadata(IDictionary<string, object?>? headers)
     {
-        var parentId = Headers.GetString(headers, KnownMetadata.OriginatingOperationId);
+        var parentId = Headers.GetString(headers, KnownMetadata.ParentOperationId);
         if (!string.IsNullOrWhiteSpace(parentId))
         {
             var activity = new Activity("rabbitmq-consumer").SetParentId(parentId);

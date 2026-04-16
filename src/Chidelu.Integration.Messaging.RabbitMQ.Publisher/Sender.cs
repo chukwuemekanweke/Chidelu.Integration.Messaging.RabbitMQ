@@ -108,21 +108,31 @@ public sealed class Sender(SenderOptions opt)
         properties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
         var headers = properties.Headers ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        var currentContext = opt.MessageContextAccessor.Current;
 
         if (extraHeaders?.TryGetValue(KnownMetadata.CorrelationId, out var corr) == true
             && !string.IsNullOrWhiteSpace(corr))
         {
             Headers.SetString(headers, KnownMetadata.CorrelationId, corr);
         }
+        else if (!string.IsNullOrWhiteSpace(currentContext?.CorrelationId))
+        {
+            Headers.SetString(headers, KnownMetadata.CorrelationId, currentContext.CorrelationId!);
+        }
+
         if (extraHeaders?.TryGetValue(KnownMetadata.CausationId, out var caus) == true
             && !string.IsNullOrWhiteSpace(caus))
         {
             Headers.SetString(headers, KnownMetadata.CausationId, caus);
         }
+        else if (currentContext?.MessageId is Guid incomingMessageId && incomingMessageId != Guid.Empty)
+        {
+            Headers.SetString(headers, KnownMetadata.CausationId, incomingMessageId.ToString());
+        }
 
         if (Activity.Current is { } act)
         {
-            Headers.SetString(headers, KnownMetadata.OriginatingOperationId, act.Id!);
+            Headers.SetString(headers, KnownMetadata.ParentOperationId, act.Id!);
         }
 
         return properties;

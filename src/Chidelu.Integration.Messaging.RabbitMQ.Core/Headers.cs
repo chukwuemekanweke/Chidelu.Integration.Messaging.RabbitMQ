@@ -10,7 +10,7 @@ public static class Headers
         || string.Equals(key, KnownMetadata.MessageId, StringComparison.OrdinalIgnoreCase)
         || string.Equals(key, KnownMetadata.CorrelationId, StringComparison.OrdinalIgnoreCase)
         || string.Equals(key, KnownMetadata.CausationId, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(key, KnownMetadata.OriginatingOperationId, StringComparison.OrdinalIgnoreCase);
+        || string.Equals(key, KnownMetadata.ParentOperationId, StringComparison.OrdinalIgnoreCase);
 
     public static string? GetString(IDictionary<string, object?>? headers, string key)
     {
