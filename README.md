@@ -125,6 +125,20 @@ await consumer.StartAsync(stoppingToken);
 
 Handlers should be registered before `StartAsync` so the queue bindings are created correctly.
 
+Handlers can access publish/send headers by injecting `IMessageContext`.
+
+```csharp
+public sealed class OrderCreatedHandler(IMessageContext messageContext)
+    : IMessageHandler<OrderCreated>
+{
+    public Task HandleAsync(OrderCreated message, CancellationToken cancellationToken)
+    {
+        var tenantId = messageContext.GetHeader("tenant-id");
+        return Task.CompletedTask;
+    }
+}
+```
+
 ## Routing and Headers
 - Routing key: `typeof(T).FullName` (assembly name is not included).
 - Type header: `cimr-assembly-type` with the assembly-qualified type name.

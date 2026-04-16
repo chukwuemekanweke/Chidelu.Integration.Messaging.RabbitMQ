@@ -29,7 +29,7 @@ internal sealed class MessageDispatcher(
                 ?? throw new DeserializationException(
                     $"Deserialization returned null. MessageType: {messageType}");
 
-            await registration.Invoke(serviceProvider, deserialized, cancellationToken);
+            await registration.Invoke(serviceProvider, deserialized, envelope, cancellationToken);
             return DispatchOutcome.Ack;
         }
         catch (FailedToProcessMessageException ex)

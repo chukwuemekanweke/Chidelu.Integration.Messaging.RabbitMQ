@@ -33,13 +33,14 @@ internal abstract class MessageConsumerBase(
             key,
             new HandlerRegistry(
                 typeof(TMessage),
-                async (sp, obj, ct) =>
+                async (sp, obj, envelope, ct) =>
                 {
 #if NET8_0_OR_GREATER
                     await using var scope = sp.CreateAsyncScope();
 #else
                     using var scope = sp.CreateScope();
 #endif
+                    scope.ServiceProvider.GetRequiredService<MessageContext>().SetHeaders(envelope.Headers);
                     var handler = scope.ServiceProvider.GetRequiredService<THandler>();
                     await handler.HandleAsync((TMessage)obj, ct);
                 }));

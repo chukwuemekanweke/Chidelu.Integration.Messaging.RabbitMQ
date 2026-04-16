@@ -21,6 +21,22 @@ public sealed class MessageDispatcherTests
         }
     }
 
+    private sealed class HeaderCapturingHandler(
+        ConcurrentBag<string> seenHeaders,
+        IMessageContext messageContext) : IMessageHandler<SampleMessage>
+    {
+        public Task HandleAsync(SampleMessage message, CancellationToken cancellationToken)
+        {
+            var value = messageContext.GetHeader("tenant-id");
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                seenHeaders.Add(value);
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class FailedHandler : IMessageHandler<SampleMessage>
     {
         public Task HandleAsync(SampleMessage message, CancellationToken cancellationToken)
@@ -38,6 +54,8 @@ public sealed class MessageDispatcherTests
     {
         var seen = new ConcurrentBag<SampleMessage>();
         var services = new ServiceCollection()
+            .AddScoped<MessageContext>()
+            .AddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>())
             .AddSingleton(seen)
             .AddSingleton<CapturingHandler>()
             .AddSingleton<IMessageHandler<SampleMessage>>(sp => sp.GetRequiredService<CapturingHandler>())
@@ -62,6 +80,8 @@ public sealed class MessageDispatcherTests
     public async Task DispatchAsync_WhenHandlerThrowsFailedToProcess_ReturnsNackDrop()
     {
         var services = new ServiceCollection()
+            .AddScoped<MessageContext>()
+            .AddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>())
             .AddSingleton<FailedHandler>()
             .AddSingleton<IMessageHandler<SampleMessage>>(sp => sp.GetRequiredService<FailedHandler>())
             .BuildServiceProvider();
@@ -84,6 +104,8 @@ public sealed class MessageDispatcherTests
     public async Task DispatchAsync_WhenHandlerThrowsOtherException_ReturnsNackRequeue()
     {
         var services = new ServiceCollection()
+            .AddScoped<MessageContext>()
+            .AddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>())
             .AddSingleton<ThrowingHandler>()
             .AddSingleton<IMessageHandler<SampleMessage>>(sp => sp.GetRequiredService<ThrowingHandler>())
             .BuildServiceProvider();
@@ -100,6 +122,36 @@ public sealed class MessageDispatcherTests
         var outcome = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
 
         outcome.ShouldBe(DispatchOutcome.NackRequeue);
+    }
+
+    [Fact]
+    public async Task DispatchAsync_MakesHeadersAvailableThroughMessageContext()
+    {
+        var seenHeaders = new ConcurrentBag<string>();
+        var services = new ServiceCollection()
+            .AddScoped<MessageContext>()
+            .AddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>())
+            .AddSingleton(seenHeaders)
+            .AddScoped<HeaderCapturingHandler>()
+            .AddScoped<IMessageHandler<SampleMessage>>(sp => sp.GetRequiredService<HeaderCapturingHandler>())
+            .BuildServiceProvider();
+
+        var serializer = new DefaultRabbitSerializer();
+        var handlers = new Dictionary<string, HandlerRegistry>(StringComparer.Ordinal)
+        {
+            [typeof(SampleMessage).FullName!] = CreateRegistry<SampleMessage, HeaderCapturingHandler>()
+        };
+
+        var dispatcher = CreateDispatcher(services, serializer, handlers);
+        var envelope = BuildEnvelope(
+            new SampleMessage(9),
+            serializer,
+            extraHeaders: new Dictionary<string, string> { ["tenant-id"] = "tenant-42" });
+
+        var outcome = await dispatcher.DispatchAsync(envelope, CancellationToken.None);
+
+        outcome.ShouldBe(DispatchOutcome.Ack);
+        seenHeaders.ShouldContain("tenant-42");
     }
 
     [Fact]
@@ -149,9 +201,11 @@ public sealed class MessageDispatcherTests
     {
         return new HandlerRegistry(
             typeof(TMessage),
-            async (sp, obj, ct) =>
+            async (sp, obj, envelope, ct) =>
             {
-                var handler = sp.GetRequiredService<THandler>();
+                using var scope = sp.CreateScope();
+                scope.ServiceProvider.GetRequiredService<MessageContext>().SetHeaders(envelope.Headers);
+                var handler = scope.ServiceProvider.GetRequiredService<THandler>();
                 await handler.HandleAsync((TMessage)obj, ct);
             });
     }
@@ -159,13 +213,22 @@ public sealed class MessageDispatcherTests
     private static MessageEnvelope BuildEnvelope<T>(
         T message,
         DefaultRabbitSerializer serializer,
-        bool includeTypeHeader = true)
+        bool includeTypeHeader = true,
+        IDictionary<string, string>? extraHeaders = null)
     {
         var headers = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
         if (includeTypeHeader)
         {
             CoreHeaders.SetString(headers, KnownMetadata.Type, typeof(T).AssemblyQualifiedName!);
+        }
+
+        if (extraHeaders is not null)
+        {
+            foreach (var header in extraHeaders)
+            {
+                CoreHeaders.SetString(headers, header.Key, header.Value);
+            }
         }
 
         return new MessageEnvelope

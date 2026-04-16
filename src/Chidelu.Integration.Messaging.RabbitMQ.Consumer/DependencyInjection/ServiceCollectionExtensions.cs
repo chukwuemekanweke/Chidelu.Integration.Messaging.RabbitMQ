@@ -37,6 +37,8 @@ public static class ServiceCollectionExtensions
         string dependencyInjectionKey)
     {
         services.TryAddSingleton<IRabbitSerializer, DefaultRabbitSerializer>();
+        services.TryAddScoped<MessageContext>();
+        services.TryAddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>());
 
         services.AddKeyedSingleton<ConsumerOptions>(dependencyInjectionKey, (sp, _) =>
         {
@@ -67,6 +69,8 @@ public static class ServiceCollectionExtensions
         string dependencyInjectionKey)
     {
         services.TryAddSingleton<IRabbitSerializer, DefaultRabbitSerializer>();
+        services.TryAddScoped<MessageContext>();
+        services.TryAddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>());
 
         services.AddKeyedSingleton<ConsumerOptions>(dependencyInjectionKey, (sp, _) =>
         {
