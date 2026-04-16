@@ -3,7 +3,7 @@
 public static class KnownMetadata
 {
     /// <summary>Trace/Operation id used for correlation.</summary>
-    public const string OriginatingOperationId = "cimr-originating-operation-id";
+    public const string ParentOperationId = "cimr-parent-operation-id";
 
     /// <summary>Assembly qualified type name for the message.</summary>
     public const string Type = "cimr-assembly-type";

@@ -63,7 +63,7 @@ internal sealed class MessageDispatcher(
 
     private static IDisposable BeginActivityScopeFromMetadata(IDictionary<string, object?>? headers)
     {
-        var parentId = Headers.GetString(headers, KnownMetadata.OriginatingOperationId);
+        var parentId = Headers.GetString(headers, KnownMetadata.ParentOperationId);
         if (!string.IsNullOrWhiteSpace(parentId))
         {
             var activity = new Activity("rabbitmq-consumer").SetParentId(parentId);

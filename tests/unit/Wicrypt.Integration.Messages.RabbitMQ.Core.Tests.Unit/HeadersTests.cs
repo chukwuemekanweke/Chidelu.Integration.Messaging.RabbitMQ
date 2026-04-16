@@ -57,7 +57,7 @@ public sealed class HeadersTests
         Headers.IsReservedHeader(KnownMetadata.MessageId).ShouldBeTrue();
         Headers.IsReservedHeader(KnownMetadata.CorrelationId).ShouldBeTrue();
         Headers.IsReservedHeader(KnownMetadata.CausationId).ShouldBeTrue();
-        Headers.IsReservedHeader(KnownMetadata.OriginatingOperationId).ShouldBeTrue();
+        Headers.IsReservedHeader(KnownMetadata.ParentOperationId).ShouldBeTrue();
         Headers.IsReservedHeader("x-custom").ShouldBeFalse();
     }
 }

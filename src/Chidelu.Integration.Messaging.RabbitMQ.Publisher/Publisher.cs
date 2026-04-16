@@ -140,21 +140,31 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         basicProperties.Timestamp = new AmqpTimestamp(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
 
         var headers = basicProperties.Headers ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        var currentContext = opt.MessageContextAccessor.Current;
 
         if (extraHeaders?.TryGetValue(KnownMetadata.CorrelationId, out var correlationId) == true
             && !string.IsNullOrWhiteSpace(correlationId))
         {
             Headers.SetString(headers, KnownMetadata.CorrelationId, correlationId);
         }
+        else if (!string.IsNullOrWhiteSpace(currentContext?.CorrelationId))
+        {
+            Headers.SetString(headers, KnownMetadata.CorrelationId, currentContext.CorrelationId!);
+        }
+
         if (extraHeaders?.TryGetValue(KnownMetadata.CausationId, out var causationId) == true
             && !string.IsNullOrWhiteSpace(causationId))
         {
             Headers.SetString(headers, KnownMetadata.CausationId, causationId);
         }
+        else if (currentContext?.MessageId is Guid incomingMessageId && incomingMessageId != Guid.Empty)
+        {
+            Headers.SetString(headers, KnownMetadata.CausationId, incomingMessageId.ToString());
+        }
 
         if (Activity.Current is { } act)
         {
-            Headers.SetString(headers, KnownMetadata.OriginatingOperationId, act.Id!);
+            Headers.SetString(headers, KnownMetadata.ParentOperationId, act.Id!);
         }
 
         return basicProperties;

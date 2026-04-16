@@ -5,10 +5,16 @@ namespace Chidelu.Integration.Messaging.RabbitMQ.Consumer;
 
 internal sealed class MessageContext : IMessageContext
 {
+    private readonly IMessageContextAccessor _messageContextAccessor;
     private static readonly Dictionary<string, object?> EmptyHeaders =
         new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
     private Dictionary<string, object?> _headers = EmptyHeaders;
+
+    public MessageContext(IMessageContextAccessor messageContextAccessor)
+    {
+        _messageContextAccessor = messageContextAccessor;
+    }
 
     public IReadOnlyDictionary<string, object?> Headers => _headers;
 
@@ -24,7 +30,7 @@ internal sealed class MessageContext : IMessageContext
 
     public string? CausationId => GetHeader(KnownMetadata.CausationId);
 
-    public string? OriginatingOperationId => GetHeader(KnownMetadata.OriginatingOperationId);
+    public string? ParentOperationId => GetHeader(KnownMetadata.ParentOperationId);
 
     public string? GetHeader(string key) => CoreHeaders.GetString(_headers, key);
 
@@ -33,5 +39,7 @@ internal sealed class MessageContext : IMessageContext
         _headers = headers is null
             ? EmptyHeaders
             : new Dictionary<string, object?>(headers, StringComparer.OrdinalIgnoreCase);
+
+        _messageContextAccessor.Current = this;
     }
 }

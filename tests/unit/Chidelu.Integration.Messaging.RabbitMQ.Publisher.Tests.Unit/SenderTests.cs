@@ -27,7 +27,7 @@ public sealed class SenderTests
             CommandsExchange = "x.commands"
         };
 
-        var options = new SenderOptions(config, new DefaultRabbitSerializer());
+        var options = new SenderOptions(config, new DefaultRabbitSerializer(), new AsyncLocalMessageContextAccessor());
         var sut = new Sender(options);
 
         var channel = Substitute.For<IChannel>();
@@ -75,7 +75,7 @@ public sealed class SenderTests
         messageId.ShouldNotBe(Guid.Empty);
         messageId.ToString("D")[14].ShouldBe('7');
         CoreHeaders.GetString(headers, KnownMetadata.CausationId).ShouldBe("cause-1");
-        CoreHeaders.GetString(headers, KnownMetadata.OriginatingOperationId).ShouldBe(activity.Id);
+        CoreHeaders.GetString(headers, KnownMetadata.ParentOperationId).ShouldBe(activity.Id);
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public sealed class SenderTests
             CommandsExchange = "x.commands"
         };
 
-        var options = new SenderOptions(config, new DefaultRabbitSerializer());
+        var options = new SenderOptions(config, new DefaultRabbitSerializer(), new AsyncLocalMessageContextAccessor());
         var sut = new Sender(options);
 
         var channel = Substitute.For<IChannel>();
@@ -123,7 +123,7 @@ public sealed class SenderTests
         CoreHeaders.TryGetGuid(headers, KnownMetadata.MessageId, out var messageId).ShouldBeTrue();
         messageId.ShouldNotBe(Guid.Empty);
         messageId.ToString("D")[14].ShouldBe('7');
-        CoreHeaders.GetString(headers, KnownMetadata.OriginatingOperationId).ShouldBe(activity.Id);
+        CoreHeaders.GetString(headers, KnownMetadata.ParentOperationId).ShouldBe(activity.Id);
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public sealed class SenderTests
             CommandsExchange = "x.commands"
         };
 
-        var options = new SenderOptions(config, new DefaultRabbitSerializer());
+        var options = new SenderOptions(config, new DefaultRabbitSerializer(), new AsyncLocalMessageContextAccessor());
         var sut = new Sender(options);
 
         var channel = Substitute.For<IChannel>();
@@ -168,5 +168,105 @@ public sealed class SenderTests
         var field = typeof(Sender).GetField("_ch", BindingFlags.Instance | BindingFlags.NonPublic);
         field.ShouldNotBeNull();
         field!.SetValue(target, channel);
+    }
+
+    [Fact]
+    public async Task SendAsync_InheritsCorrelationId_AndSetsCausationId_FromIncomingContext()
+    {
+        var config = new SenderConfig
+        {
+            ServiceName = "svc",
+            HostName = "localhost",
+            Port = 5672,
+            UserName = "user",
+            Password = "pass",
+            VirtualHost = "/",
+            CommandsExchange = "x.commands"
+        };
+
+        var accessor = new AsyncLocalMessageContextAccessor();
+        accessor.Current = new TestMessageMetadataContext(Guid.CreateVersion7(), "corr-inbound");
+
+        var options = new SenderOptions(config, new DefaultRabbitSerializer(), accessor);
+        var sut = new Sender(options);
+
+        var channel = Substitute.For<IChannel>();
+        BasicProperties? capturedProperties = null;
+
+        channel.BasicPublishAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<BasicProperties>(),
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ValueTask.CompletedTask)
+            .AndDoes(ci => capturedProperties = ci.ArgAt<BasicProperties>(3));
+
+        SetChannel(sut, channel);
+
+        await sut.SendAsync(new ShipOrder(Guid.CreateVersion7()), CancellationToken.None);
+
+        var headers = capturedProperties!.Headers.ShouldNotBeNull();
+        CoreHeaders.GetString(headers, KnownMetadata.CorrelationId).ShouldBe("corr-inbound");
+        CoreHeaders.GetString(headers, KnownMetadata.CausationId).ShouldBe(accessor.Current!.MessageId!.Value.ToString());
+    }
+
+    [Fact]
+    public async Task SendAsync_ExplicitHeadersOverrideIncomingContext()
+    {
+        var config = new SenderConfig
+        {
+            ServiceName = "svc",
+            HostName = "localhost",
+            Port = 5672,
+            UserName = "user",
+            Password = "pass",
+            VirtualHost = "/",
+            CommandsExchange = "x.commands"
+        };
+
+        var accessor = new AsyncLocalMessageContextAccessor();
+        accessor.Current = new TestMessageMetadataContext(Guid.CreateVersion7(), "corr-inbound");
+
+        var options = new SenderOptions(config, new DefaultRabbitSerializer(), accessor);
+        var sut = new Sender(options);
+
+        var channel = Substitute.For<IChannel>();
+        BasicProperties? capturedProperties = null;
+
+        channel.BasicPublishAsync(
+                Arg.Any<string>(),
+                Arg.Any<string>(),
+                Arg.Any<bool>(),
+                Arg.Any<BasicProperties>(),
+                Arg.Any<ReadOnlyMemory<byte>>(),
+                Arg.Any<CancellationToken>())
+            .Returns(ValueTask.CompletedTask)
+            .AndDoes(ci => capturedProperties = ci.ArgAt<BasicProperties>(3));
+
+        SetChannel(sut, channel);
+
+        var explicitHeaders = new Dictionary<string, string>
+        {
+            [KnownMetadata.CorrelationId] = "corr-explicit",
+            [KnownMetadata.CausationId] = "cause-explicit"
+        };
+
+        await sut.SendAsync(new ShipOrder(Guid.CreateVersion7()), CancellationToken.None, explicitHeaders);
+
+        var headers = capturedProperties!.Headers.ShouldNotBeNull();
+        CoreHeaders.GetString(headers, KnownMetadata.CorrelationId).ShouldBe("corr-explicit");
+        CoreHeaders.GetString(headers, KnownMetadata.CausationId).ShouldBe("cause-explicit");
+    }
+
+    private sealed class TestMessageMetadataContext(Guid? messageId, string? correlationId) : IMessageMetadataContext
+    {
+        public IReadOnlyDictionary<string, object?> Headers { get; } = new Dictionary<string, object?>();
+        public string? MessageType => null;
+        public Guid? MessageId { get; } = messageId;
+        public string? CorrelationId { get; } = correlationId;
+        public string? CausationId => null;
+        public string? ParentOperationId => null;
     }
 }

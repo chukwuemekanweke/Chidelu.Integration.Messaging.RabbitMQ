@@ -54,6 +54,7 @@ public sealed class MessageDispatcherTests
     {
         var seen = new ConcurrentBag<SampleMessage>();
         var services = new ServiceCollection()
+            .AddSingleton<IMessageContextAccessor, AsyncLocalMessageContextAccessor>()
             .AddScoped<MessageContext>()
             .AddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>())
             .AddSingleton(seen)
@@ -80,6 +81,7 @@ public sealed class MessageDispatcherTests
     public async Task DispatchAsync_WhenHandlerThrowsFailedToProcess_ReturnsNackDrop()
     {
         var services = new ServiceCollection()
+            .AddSingleton<IMessageContextAccessor, AsyncLocalMessageContextAccessor>()
             .AddScoped<MessageContext>()
             .AddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>())
             .AddSingleton<FailedHandler>()
@@ -104,6 +106,7 @@ public sealed class MessageDispatcherTests
     public async Task DispatchAsync_WhenHandlerThrowsOtherException_ReturnsNackRequeue()
     {
         var services = new ServiceCollection()
+            .AddSingleton<IMessageContextAccessor, AsyncLocalMessageContextAccessor>()
             .AddScoped<MessageContext>()
             .AddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>())
             .AddSingleton<ThrowingHandler>()
@@ -129,6 +132,7 @@ public sealed class MessageDispatcherTests
     {
         var seenHeaders = new ConcurrentBag<string>();
         var services = new ServiceCollection()
+            .AddSingleton<IMessageContextAccessor, AsyncLocalMessageContextAccessor>()
             .AddScoped<MessageContext>()
             .AddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>())
             .AddSingleton(seenHeaders)
@@ -204,9 +208,18 @@ public sealed class MessageDispatcherTests
             async (sp, obj, envelope, ct) =>
             {
                 using var scope = sp.CreateScope();
+                var messageContextAccessor = scope.ServiceProvider.GetRequiredService<IMessageContextAccessor>();
+                var previous = messageContextAccessor.Current;
                 scope.ServiceProvider.GetRequiredService<MessageContext>().SetHeaders(envelope.Headers);
                 var handler = scope.ServiceProvider.GetRequiredService<THandler>();
-                await handler.HandleAsync((TMessage)obj, ct);
+                try
+                {
+                    await handler.HandleAsync((TMessage)obj, ct);
+                }
+                finally
+                {
+                    messageContextAccessor.Current = previous;
+                }
             });
     }
 

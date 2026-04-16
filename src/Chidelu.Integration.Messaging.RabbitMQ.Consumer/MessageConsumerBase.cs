@@ -1,3 +1,4 @@
+using Chidelu.Integration.Messaging.RabbitMQ.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -40,9 +41,18 @@ internal abstract class MessageConsumerBase(
 #else
                     using var scope = sp.CreateScope();
 #endif
+                    var messageContextAccessor = scope.ServiceProvider.GetRequiredService<IMessageContextAccessor>();
+                    var previous = messageContextAccessor.Current;
                     scope.ServiceProvider.GetRequiredService<MessageContext>().SetHeaders(envelope.Headers);
                     var handler = scope.ServiceProvider.GetRequiredService<THandler>();
-                    await handler.HandleAsync((TMessage)obj, ct);
+                    try
+                    {
+                        await handler.HandleAsync((TMessage)obj, ct);
+                    }
+                    finally
+                    {
+                        messageContextAccessor.Current = previous;
+                    }
                 }));
 
         if (!added)

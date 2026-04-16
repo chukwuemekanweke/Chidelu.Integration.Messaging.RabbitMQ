@@ -13,11 +13,13 @@ public static class ServiceCollectionExtensions
     {
         var key = dependencyInjectionKey ?? config.Key;
         services.TryAddSingleton<IRabbitSerializer, DefaultRabbitSerializer>();
+        services.TryAddSingleton<IMessageContextAccessor, AsyncLocalMessageContextAccessor>();
 
         services.AddKeyedSingleton<PublisherOptions>(key, (sp, _) =>
         {
             var serializer = sp.GetRequiredService<IRabbitSerializer>();
-            return new PublisherOptions(config, serializer);
+            var messageContextAccessor = sp.GetRequiredService<IMessageContextAccessor>();
+            return new PublisherOptions(config, serializer, messageContextAccessor);
         });
 
         services.AddKeyedSingleton<IPublisher>(key, (sp, _) =>
@@ -36,11 +38,13 @@ public static class ServiceCollectionExtensions
     {
         var key = dependencyInjectionKey ?? config.Key;
         services.TryAddSingleton<IRabbitSerializer, DefaultRabbitSerializer>();
+        services.TryAddSingleton<IMessageContextAccessor, AsyncLocalMessageContextAccessor>();
 
         services.AddKeyedSingleton<SenderOptions>(key, (sp, _) =>
         {
             var serializer = sp.GetRequiredService<IRabbitSerializer>();
-            return new SenderOptions(config, serializer);
+            var messageContextAccessor = sp.GetRequiredService<IMessageContextAccessor>();
+            return new SenderOptions(config, serializer, messageContextAccessor);
         });
 
         services.AddKeyedSingleton<ISender>(key, (sp, _) =>

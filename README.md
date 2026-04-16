@@ -112,6 +112,18 @@ var sender = services.GetRequiredKeyedService<ISender>(senderConfig.Key);
 await sender.SendAsync(new ShipOrder(Guid.CreateVersion7(), "ORD-1"), CancellationToken.None);
 ```
 
+Additional headers can still be supplied explicitly:
+
+```csharp
+await publisher.PublishAsync(
+    new OrderCreated(Guid.CreateVersion7(), "ORD-1"),
+    CancellationToken.None,
+    new Dictionary<string, string>
+    {
+        ["tenant-id"] = "tenant-42"
+    });
+```
+
 ## Consuming
 `AddHandler` registers message handlers and determines the routing keys used for direct exchanges.
 
@@ -143,8 +155,53 @@ public sealed class OrderCreatedHandler(IMessageContext messageContext)
 - Routing key: `typeof(T).FullName` (assembly name is not included).
 - Type header: `cimr-assembly-type` with the assembly-qualified type name.
 - Additional headers can be provided via `extraHeaders`.
+- Explicit `extraHeaders` values override automatically propagated metadata values.
 
 For fanout exchanges, RabbitMQ ignores routing keys, but the library still sets the routing key for consistency.
+
+## Observability
+This library carries both business metadata and tracing metadata through RabbitMQ headers.
+
+Known metadata headers:
+- `cimr-message-id`: logical message id. Must be UUIDv7 when supplied. If the message contract contains `Guid.Empty`, the library generates a UUIDv7.
+- `cimr-correlation-id`: end-to-end correlation id used to group related messages in the same workflow.
+- `cimr-causation-id`: identifies the message that directly caused the new message to be published or sent.
+- `cimr-parent-operation-id`: tracing parent operation id, derived from `Activity.Current.Id`.
+- `cimr-assembly-type`: assembly-qualified message type used for dispatch.
+
+Automatic propagation behavior:
+- When publishing or sending inside a consumer/subscriber handler, `CorrelationId` is copied from the current inbound message if present.
+- When publishing or sending inside a consumer/subscriber handler, `CausationId` is set to the current inbound message's `MessageId` if present.
+- `ParentOperationId` is set from `Activity.Current.Id` when an activity is active.
+- If `CorrelationId` or `CausationId` are passed explicitly in `extraHeaders`, the explicit values win.
+
+Consumer-side behavior:
+- Incoming handlers can access all headers by injecting `IMessageContext`.
+- The consumer uses `cimr-parent-operation-id` to start a new `Activity` with that value as the parent, preserving trace continuity across message boundaries.
+
+Example:
+
+```csharp
+public sealed class OrderCreatedHandler(
+    IMessageContext messageContext,
+    IPublisher publisher) : IMessageHandler<OrderCreated>
+{
+    public async Task HandleAsync(OrderCreated message, CancellationToken cancellationToken)
+    {
+        var tenantId = messageContext.GetHeader("tenant-id");
+
+        await publisher.PublishAsync(
+            new OrderProcessed(Guid.CreateVersion7(), message.OrderId),
+            cancellationToken);
+    }
+}
+```
+
+In the example above:
+- `tenant-id` is available from the inbound message through `IMessageContext`.
+- `CorrelationId` automatically flows to `OrderProcessed` if it was present on `OrderCreated`.
+- `CausationId` on `OrderProcessed` is automatically set to `OrderCreated.MessageId`.
+- `ParentOperationId` flows through the current `Activity` when tracing is enabled.
 
 ## Queue Naming Conventions
 The runtime queue names are derived from the user-provided identifiers:
