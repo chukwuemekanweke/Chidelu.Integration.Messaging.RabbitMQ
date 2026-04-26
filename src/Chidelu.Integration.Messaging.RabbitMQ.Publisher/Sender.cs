@@ -61,6 +61,8 @@ public sealed class Sender(SenderOptions opt)
             throw new InvalidOperationException("CommandsExchange is required for command publishing.");
         }
 
+        using var activity = BeginSendActivity(extraHeaders);
+
         var channel = _ch!;
         var exchange = opt.Config.CommandsExchange!;
         var routingKey = ResolveRoutingKey<T>();
@@ -130,17 +132,26 @@ public sealed class Sender(SenderOptions opt)
             Headers.SetString(headers, KnownMetadata.CausationId, incomingMessageId.ToString());
         }
 
-        if (extraHeaders?.TryGetValue(KnownMetadata.ParentOperationId, out var parentOperationId) == true
+        if (Activity.Current is { } act)
+        {
+            Headers.SetString(headers, KnownMetadata.ParentOperationId, act.Id!);
+        }
+        else if (extraHeaders?.TryGetValue(KnownMetadata.ParentOperationId, out var parentOperationId) == true
             && !string.IsNullOrWhiteSpace(parentOperationId))
         {
             Headers.SetString(headers, KnownMetadata.ParentOperationId, parentOperationId);
         }
-        else if (Activity.Current is { } act)
-        {
-            Headers.SetString(headers, KnownMetadata.ParentOperationId, act.Id!);
-        }
 
         return properties;
+    }
+
+    private static Activity? BeginSendActivity(IDictionary<string, string>? extraHeaders)
+    {
+        var parentId = extraHeaders?.TryGetValue(KnownMetadata.ParentOperationId, out var value) == true
+            ? value
+            : Activity.Current?.Id;
+
+        return RabbitMqDiagnostics.StartActivity("rabbitmq-send", parentId);
     }
 
     private static string ResolveRoutingKey<T>()

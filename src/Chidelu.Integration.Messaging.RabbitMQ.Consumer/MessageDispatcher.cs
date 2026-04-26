@@ -66,12 +66,10 @@ internal sealed class MessageDispatcher(
         var parentId = Headers.GetString(headers, KnownMetadata.ParentOperationId);
         if (!string.IsNullOrWhiteSpace(parentId))
         {
-            var activity = new Activity("rabbitmq-consumer").SetParentId(parentId);
-            activity.Start();
-            return activity;
+            return RabbitMqDiagnostics.StartActivity("rabbitmq-consumer", parentId);
         }
 
-        return new NoopScope();
+        return RabbitMqDiagnostics.StartActivity("rabbitmq-consumer");
     }
 
     private sealed class NoopScope : IDisposable { public void Dispose() { } }

@@ -34,6 +34,7 @@ public sealed class SenderTests
         BasicProperties? capturedProps = null;
         string? capturedExchange = null;
         string? capturedRoutingKey = null;
+        Activity? capturedActivity = null;
 
         channel.BasicPublishAsync(
                 Arg.Any<string>(),
@@ -48,6 +49,7 @@ public sealed class SenderTests
                 capturedExchange = ci.ArgAt<string>(0);
                 capturedRoutingKey = ci.ArgAt<string>(1);
                 capturedProps = ci.ArgAt<BasicProperties>(3);
+                capturedActivity = Activity.Current;
             });
 
         SetChannel(sut, channel);
@@ -75,7 +77,8 @@ public sealed class SenderTests
         messageId.ShouldNotBe(Guid.Empty);
         messageId.ToString("D")[14].ShouldBe('7');
         CoreHeaders.GetString(headers, KnownMetadata.CausationId).ShouldBe("cause-1");
-        CoreHeaders.GetString(headers, KnownMetadata.ParentOperationId).ShouldBe(activity.Id);
+        CoreHeaders.GetString(headers, KnownMetadata.ParentOperationId).ShouldBe(capturedActivity!.Id);
+        capturedActivity.ParentId.ShouldBe(activity.Id);
     }
 
     [Fact]
@@ -97,6 +100,7 @@ public sealed class SenderTests
 
         var channel = Substitute.For<IChannel>();
         BasicProperties? capturedProperties = null;
+        Activity? capturedActivity = null;
 
         channel.BasicPublishAsync(
                 Arg.Any<string>(),
@@ -106,7 +110,11 @@ public sealed class SenderTests
                 Arg.Any<ReadOnlyMemory<byte>>(),
                 Arg.Any<CancellationToken>())
             .Returns(ValueTask.CompletedTask)
-            .AndDoes(ci => capturedProperties = ci.ArgAt<BasicProperties>(3));
+            .AndDoes(ci =>
+            {
+                capturedProperties = ci.ArgAt<BasicProperties>(3);
+                capturedActivity = Activity.Current;
+            });
 
         SetChannel(sut, channel);
 
@@ -123,7 +131,8 @@ public sealed class SenderTests
         CoreHeaders.TryGetGuid(headers, KnownMetadata.MessageId, out var messageId).ShouldBeTrue();
         messageId.ShouldNotBe(Guid.Empty);
         messageId.ToString("D")[14].ShouldBe('7');
-        CoreHeaders.GetString(headers, KnownMetadata.ParentOperationId).ShouldBe(activity.Id);
+        CoreHeaders.GetString(headers, KnownMetadata.ParentOperationId).ShouldBe(capturedActivity!.Id);
+        capturedActivity.ParentId.ShouldBe(activity.Id);
     }
 
     [Fact]
