@@ -186,7 +186,7 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
             ? value
             : Activity.Current?.Id;
 
-        return RabbitMqDiagnostics.StartActivity("rabbitmq-publish", parentId);
+        return RabbitMqDiagnostics.StartActivity("rabbitmq-publish", ActivityKind.Producer, parentId);
     }
 
     private static Guid ResolveMessageId<T>(T @event)

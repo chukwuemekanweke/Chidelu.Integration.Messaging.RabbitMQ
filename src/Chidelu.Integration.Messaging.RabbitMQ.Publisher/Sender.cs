@@ -151,7 +151,7 @@ public sealed class Sender(SenderOptions opt)
             ? value
             : Activity.Current?.Id;
 
-        return RabbitMqDiagnostics.StartActivity("rabbitmq-send", parentId);
+        return RabbitMqDiagnostics.StartActivity("rabbitmq-send", ActivityKind.Producer, parentId);
     }
 
     private static string ResolveRoutingKey<T>()

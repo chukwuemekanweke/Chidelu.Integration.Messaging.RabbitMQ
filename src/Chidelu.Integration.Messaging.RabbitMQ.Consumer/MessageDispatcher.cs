@@ -1,5 +1,6 @@
 using Chidelu.Integration.Messaging.RabbitMQ.Core;
 using Chidelu.Integration.Messaging.RabbitMQ.Core.Exceptions;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Headers = Chidelu.Integration.Messaging.RabbitMQ.Core.Headers;
 
@@ -63,12 +64,8 @@ internal sealed class MessageDispatcher(
     private static IDisposable BeginActivityScopeFromMetadata(IDictionary<string, object?>? headers)
     {
         var parentId = Headers.GetString(headers, KnownMetadata.ParentOperationId);
-        if (!string.IsNullOrWhiteSpace(parentId))
-        {
-            return RabbitMqDiagnostics.StartActivity("rabbitmq-consumer", parentId);
-        }
 
-        return RabbitMqDiagnostics.StartActivity("rabbitmq-consumer");
+        return RabbitMqDiagnostics.StartActivity("rabbitmq-consumer", ActivityKind.Consumer, parentId);
     }
 
     private sealed class NoopScope : IDisposable { public void Dispose() { } }
