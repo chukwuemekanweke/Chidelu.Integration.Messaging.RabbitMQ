@@ -90,7 +90,7 @@ jobs:
 
       - name: Make test assemblies executable
         shell: bash
-        run: find tests -type f \( -name "*.dll" -o -name "*.exe" \) -exec chmod +x {} \;
+        run: find tests -path "*/bin/*" -type f -exec chmod +x {} \;
 
       - name: Run Unit Tests with Coverage (auto-discover *Tests.Unit.csproj)
         id: unit_tests
@@ -171,7 +171,7 @@ jobs:
 
       - name: Make test assemblies executable
         shell: bash
-        run: find tests -type f \( -name "*.dll" -o -name "*.exe" \) -exec chmod +x {} \;
+        run: find tests -path "*/bin/*" -type f -exec chmod +x {} \;
 
       - name: Run Integration Tests with Coverage
         id: integration_tests
