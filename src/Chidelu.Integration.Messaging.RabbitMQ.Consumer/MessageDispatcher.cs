@@ -1,7 +1,6 @@
 using Chidelu.Integration.Messaging.RabbitMQ.Core;
 using Chidelu.Integration.Messaging.RabbitMQ.Core.Exceptions;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 using Headers = Chidelu.Integration.Messaging.RabbitMQ.Core.Headers;
 
 namespace Chidelu.Integration.Messaging.RabbitMQ.Consumer;
