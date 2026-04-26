@@ -146,12 +146,12 @@ public sealed class ConsumerIntegrationTests(RabbitMqFixture fixture)
             VirtualHost = fixture.VirtualHost
         };
 
-        await using var conn = await cf.CreateConnectionAsync("consumer-dlq-test");
-        await using var ch = await conn.CreateChannelAsync();
+        await using var conn = await cf.CreateConnectionAsync("consumer-dlq-test", TestContext.Current.CancellationToken);
+        await using var ch = await conn.CreateChannelAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         try
         {
-            await sender.SendAsync(new ShipOrder(Guid.CreateVersion7(), "ORD-500"), CancellationToken.None);
+            await sender.SendAsync(new ShipOrder(Guid.CreateVersion7(), "ORD-500"), TestContext.Current.CancellationToken);
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             BasicGetResult? dlqMsg = null;

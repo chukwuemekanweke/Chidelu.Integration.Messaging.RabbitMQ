@@ -1,7 +1,9 @@
-name: CI (.NET 9)
+name: CI (.NET 10)
 
 on:
   push:
+    branches:
+      - main
     paths:
       - ".github/workflows/**"
       - "src/**"
@@ -25,10 +27,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 9
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -64,10 +66,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 9
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -85,6 +87,10 @@ jobs:
 
       - name: Restore solution
         run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
+
+      - name: Make test assemblies executable
+        shell: bash
+        run: find tests -path "*/bin/*" -type f -exec chmod +x {} \;
 
       - name: Run Unit Tests with Coverage (auto-discover *Tests.Unit.csproj)
         id: unit_tests
@@ -141,10 +147,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 9
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
@@ -162,6 +168,10 @@ jobs:
 
       - name: Restore solution
         run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
+
+      - name: Make test assemblies executable
+        shell: bash
+        run: find tests -path "*/bin/*" -type f -exec chmod +x {} \;
 
       - name: Run Integration Tests with Coverage
         id: integration_tests
@@ -201,10 +211,10 @@ jobs:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
 
     steps:
-      - name: Setup .NET 9
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Download Unit Coverage
         uses: actions/download-artifact@v4
@@ -265,10 +275,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
 
-      - name: Setup .NET 9
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Resolve package version from tag
         id: version
