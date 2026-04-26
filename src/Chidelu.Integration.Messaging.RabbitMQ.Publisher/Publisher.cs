@@ -55,6 +55,8 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         cancellationToken.ThrowIfCancellationRequested();
         await EnsureInitializedAsync(cancellationToken);
 
+        using var activity = BeginPublishActivity(extraHeaders);
+
         var channel = _ch!;
         var routingKey = ResolveRoutingKey<T>();
         var body = opt.Serializer.Serialize(@event);
@@ -93,18 +95,21 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         var routingKey = ResolveRoutingKey<T>();
         var exchange = opt.Config.EventsExchange!;
 
-        foreach (var e in events)
+        using (var activity = BeginPublishActivity(sharedHeaders))
         {
-            var body = opt.Serializer.Serialize(e);
-            var properties = BuildProperties(e, sharedHeaders);
+            foreach (var e in events)
+            {
+                var body = opt.Serializer.Serialize(e);
+                var properties = BuildProperties(e, sharedHeaders);
 
-            await channel.BasicPublishAsync(
-                exchange: exchange,
-                routingKey: routingKey,
-                mandatory: false,
-                basicProperties: properties,
-                body: body,
-                cancellationToken: cancellationToken);
+                await channel.BasicPublishAsync(
+                    exchange: exchange,
+                    routingKey: routingKey,
+                    mandatory: false,
+                    basicProperties: properties,
+                    body: body,
+                    cancellationToken: cancellationToken);
+            }
         }
     }
 
@@ -166,8 +171,22 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
         {
             Headers.SetString(headers, KnownMetadata.ParentOperationId, act.Id!);
         }
+        else if (extraHeaders?.TryGetValue(KnownMetadata.ParentOperationId, out var parentOperationId) == true
+            && !string.IsNullOrWhiteSpace(parentOperationId))
+        {
+            Headers.SetString(headers, KnownMetadata.ParentOperationId, parentOperationId);
+        }
 
         return basicProperties;
+    }
+
+    private static Activity? BeginPublishActivity(IDictionary<string, string>? extraHeaders)
+    {
+        var parentId = extraHeaders?.TryGetValue(KnownMetadata.ParentOperationId, out var value) == true
+            ? value
+            : Activity.Current?.Id;
+
+        return RabbitMqDiagnostics.StartActivity("rabbitmq-publish", ActivityKind.Producer, parentId);
     }
 
     private static Guid ResolveMessageId<T>(T @event)

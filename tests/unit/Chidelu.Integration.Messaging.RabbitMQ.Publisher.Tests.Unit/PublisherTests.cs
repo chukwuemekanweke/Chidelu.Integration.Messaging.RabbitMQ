@@ -33,6 +33,7 @@ public sealed class PublisherTests
         BasicProperties? capturedProperties = null;
         string? capturedExchange = null;
         string? capturedRoutingKey = null;
+        Activity? capturedActivity = null;
 
         channel.BasicPublishAsync(
                 Arg.Any<string>(),
@@ -47,6 +48,7 @@ public sealed class PublisherTests
                 capturedExchange = ci.ArgAt<string>(0);
                 capturedRoutingKey = ci.ArgAt<string>(1);
                 capturedProperties = ci.ArgAt<BasicProperties>(3);
+                capturedActivity = Activity.Current;
             });
 
         SetChannel(sut, channel);
@@ -74,7 +76,8 @@ public sealed class PublisherTests
         CoreHeaders.TryGetGuid(headers, KnownMetadata.MessageId, out var parsed).ShouldBeTrue();
         parsed.ShouldBe(messageId);
         CoreHeaders.GetString(headers, KnownMetadata.CorrelationId).ShouldBe("corr-1");
-        CoreHeaders.GetString(headers, KnownMetadata.ParentOperationId).ShouldBe(activity.Id);
+        CoreHeaders.GetString(headers, KnownMetadata.ParentOperationId).ShouldBe(capturedActivity!.Id);
+        capturedActivity.ParentId.ShouldBe(activity.Id);
     }
 
     [Fact]
