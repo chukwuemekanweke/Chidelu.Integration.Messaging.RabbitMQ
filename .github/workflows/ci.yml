@@ -86,6 +86,10 @@ jobs:
       - name: Restore solution
         run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
 
+      - name: Make test assemblies executable
+        shell: bash
+        run: find tests -type f \( -name "*.dll" -o -name "*.exe" \) -exec chmod +x {} \;
+
       - name: Run Unit Tests with Coverage (auto-discover *Tests.Unit.csproj)
         id: unit_tests
         shell: bash
@@ -162,6 +166,10 @@ jobs:
 
       - name: Restore solution
         run: dotnet restore "Chidelu.Integration.Messaging.RabbitMQ.sln"
+
+      - name: Make test assemblies executable
+        shell: bash
+        run: find tests -type f \( -name "*.dll" -o -name "*.exe" \) -exec chmod +x {} \;
 
       - name: Run Integration Tests with Coverage
         id: integration_tests
