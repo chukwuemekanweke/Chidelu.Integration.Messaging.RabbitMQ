@@ -162,7 +162,12 @@ public sealed class Publisher(PublisherOptions opt) : IPublisher, IAsyncDisposab
             Headers.SetString(headers, KnownMetadata.CausationId, incomingMessageId.ToString());
         }
 
-        if (Activity.Current is { } act)
+        if (extraHeaders?.TryGetValue(KnownMetadata.ParentOperationId, out var parentOperationId) == true
+            && !string.IsNullOrWhiteSpace(parentOperationId))
+        {
+            Headers.SetString(headers, KnownMetadata.ParentOperationId, parentOperationId);
+        }
+        else if (Activity.Current is { } act)
         {
             Headers.SetString(headers, KnownMetadata.ParentOperationId, act.Id!);
         }
