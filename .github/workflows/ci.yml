@@ -2,6 +2,8 @@ name: CI (.NET 10)
 
 on:
   push:
+    branches:
+      - main
     paths:
       - ".github/workflows/**"
       - "src/**"
