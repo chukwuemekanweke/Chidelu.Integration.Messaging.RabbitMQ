@@ -11,18 +11,23 @@ public sealed class RabbitMqFixture : IAsyncLifetime
     public string Password => RabbitMqBuilder.DefaultPassword;
     public string VirtualHost => "/";
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
-        Container = new RabbitMqBuilder()
-            .WithImage("rabbitmq:3.13-management")
+        Container = new RabbitMqBuilder("rabbitmq:3.13-management")
             .WithEnvironment("RABBITMQ_DEFAULT_VHOST", VirtualHost)
             .Build();
 
         await Container.StartAsync();
     }
 
-    public Task DisposeAsync()
-        => Container is null ? Task.CompletedTask : Container.DisposeAsync().AsTask();
+    public async ValueTask DisposeAsync()
+    {
+        if (Container is not null)
+        {
+            await Container.DisposeAsync();
+        }
+    }
+
 }
 
 [CollectionDefinition("rabbitmq")]
