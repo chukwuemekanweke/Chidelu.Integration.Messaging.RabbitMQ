@@ -96,6 +96,7 @@ internal abstract class MessageConsumerBase(
                 await _ch.BasicQosAsync(0, cfg.PrefetchCount, false, cancellationToken);
             }
 
+            LoadHandlersFromMap();
             await EnsureTopologyAsync(cancellationToken);
         }
         finally
@@ -112,8 +113,6 @@ internal abstract class MessageConsumerBase(
         {
             return;
         }
-
-        LoadHandlersFromMap();
 
         _stopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -318,11 +317,6 @@ internal abstract class MessageConsumerBase(
 
     private IEnumerable<Type> GetRegisteredMessageTypes()
     {
-        foreach (var d in map.Pairs)
-        {
-            yield return d.MessageType;
-        }
-
         foreach (var handler in _handlers.Values)
         {
             yield return handler.MessageType;
