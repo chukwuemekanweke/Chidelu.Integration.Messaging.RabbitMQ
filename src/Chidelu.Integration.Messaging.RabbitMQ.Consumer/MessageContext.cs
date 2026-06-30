@@ -21,10 +21,9 @@ internal sealed class MessageContext : IMessageContext
     public string? MessageType => GetHeader(KnownMetadata.Type);
 
     public Guid? MessageId
-        => _headers.TryGetValue(KnownMetadata.MessageId, out _)
-            && CoreHeaders.TryGetGuid(_headers, KnownMetadata.MessageId, out var value)
-                ? value
-                : null;
+        => CoreHeaders.TryGetGuid(_headers, KnownMetadata.MessageId, out var value)
+            ? value
+            : null;
 
     public string? CorrelationId => GetHeader(KnownMetadata.CorrelationId);
 

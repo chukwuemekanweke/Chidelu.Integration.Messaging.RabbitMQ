@@ -1,5 +1,3 @@
-using System.Threading;
-
 namespace Chidelu.Integration.Messaging.RabbitMQ.Core;
 
 public sealed class AsyncLocalMessageContextAccessor : IMessageContextAccessor
